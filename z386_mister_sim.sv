@@ -83,6 +83,7 @@ module z386_mister_sim (
 	output        dbg_pe,
 	output        dbg_vm,
 	output  [7:0] dbg_post_code,
+	output  [7:0] dbg_syscfg,
 	output  [7:0] dbg_uart_byte,
 	output        dbg_uart_we,
 	output        soft_reset_req
@@ -98,6 +99,8 @@ wire        core_reset = reset | (software_reset_count != 8'd0);
 assign soft_reset_req = software_reset;
 
 wire  [7:0] syscfg;
+assign dbg_syscfg = syscfg;
+wire  [1:0] cpu_speed_osd = {status[9] ^ status[8], status[8]};
 
 reg   [7:0] mouse_data;
 reg         mouse_data_valid;
@@ -421,7 +424,7 @@ system #(
 	.ram_size            (status[30:29]),
 	.sdram_size          (2'd3),
 	.uma_ram             (1'b0),
-	.cpu_speed_osd      (2'd0),
+	.cpu_speed_osd      (cpu_speed_osd),
 	.syscfg              (syscfg),
 
 	.video_ce            (video_ce),

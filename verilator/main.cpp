@@ -67,6 +67,7 @@ static bool posedge = false;
 static bool trace_toggle = false;
 static bool trace_loop_started = false;
 static uint64_t trace_start_cycle = 0;
+static std::string trace_file_name = "waveform.fst";
 static uint64_t current_cycle = 0;
 
 // SB audio dropout (flatline) detector / auto-trace arming.
@@ -457,7 +458,7 @@ static void set_trace(bool toggle) {
 		trace = new VerilatedFstC();
 		tb.trace(trace, 5);
 		Verilated::traceEverOn(true);
-		trace->open("waveform.fst");
+		trace->open(trace_file_name.c_str());
 	}
 	trace_toggle = toggle;
 }
@@ -674,6 +675,18 @@ static void step() {
 		}
 	}
 	if (posedge) {
+		static bool have_syscfg = false;
+		static uint8_t last_syscfg = 0;
+		if (!have_syscfg || tb.dbg_syscfg != last_syscfg) {
+			last_syscfg = tb.dbg_syscfg;
+			have_syscfg = true;
+			fprintf(stderr, "%llu: SYSCTL cfg=%02X source=%s speed=%u\n",
+			        (unsigned long long)sim_time,
+			        static_cast<unsigned>(last_syscfg),
+			        (last_syscfg & 0x80) ? "DOS" : "OSD",
+			        static_cast<unsigned>(last_syscfg & 0x03));
+		}
+
 		// Audio-dropout detector: a frozen SB output sample = DMA underrun.
 		static int16_t fl_last = 0;
 		static uint64_t fl_hold = 0, fl_start = 0;
@@ -896,7 +909,7 @@ static bool dump_screen_png(const fs::path& path, int width, int height) {
 }
 
 static void usage() {
-	cout << "Usage: Vz386_mister_sim [--trace] [--trace-start sim_time] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--opl2|--opl3] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
+	cout << "Usage: Vz386_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
 }
 
 int main(int argc, char** argv) {
@@ -915,6 +928,7 @@ int main(int argc, char** argv) {
 	vector<std::tuple<uint64_t, SDL_Keycode, bool>> key_edge_events;
 	vector<std::pair<string, SDL_Keycode>> text_key_events;
 	vector<std::tuple<uint64_t, int, int, uint8_t>> mouse_packet_events;
+	vector<std::pair<uint64_t, unsigned>> cpu_speed_events;
 	vector<uint64_t> ctrl_alt_del_cycles;
 	bool log_eip_enabled = false;
 	uint16_t log_eip_cs = 0;
@@ -925,12 +939,20 @@ int main(int argc, char** argv) {
 	string stop_on_text;
 	unsigned ram_mb = 16;
 	bool ram_mb_explicit = false;
+	unsigned cpu_speed_status = 0;
 	bool opl3_mode = true;
 	bool opl_mode_explicit = false;
 	bool vga_border = true;
 	bool vga_border_explicit = false;
 	unsigned control_port = 0;
 	string control_bind = "127.0.0.1";
+	auto parse_cpu_speed = [](const string& speed) -> unsigned {
+		if (speed == "full") return 0;
+		if (speed == "56") return 1;
+		if (speed == "30") return 2;
+		if (speed == "15") return 3;
+		throw std::invalid_argument("CPU speed must be full, 56, 30, or 15");
+	};
 
 	for (int i = 1; i < argc; ++i) {
 		string arg = argv[i];
@@ -940,6 +962,9 @@ int main(int argc, char** argv) {
 			// All CLI time values are sim_time (unified with ao486-sim, and with
 			// the fst/IDE/FRAME logs). Internal counters are cycles; sim_time = 2*cycle.
 			trace_start_cycle = std::stoull(argv[++i]) / 2;
+			enable_trace = true;
+		} else if (arg == "--trace-file" && i + 1 < argc) {
+			trace_file_name = argv[++i];
 			enable_trace = true;
 		} else if (arg == "--headless") {
 			g_headless = true;
@@ -962,6 +987,27 @@ int main(int argc, char** argv) {
 				cerr << "--ram-mb must be 16, 32, 64, or 128\n";
 				return 1;
 			}
+			} else if (arg == "--cpu-speed" && i + 1 < argc) {
+				try {
+					cpu_speed_status = parse_cpu_speed(argv[++i]);
+				} catch (const std::invalid_argument& e) {
+					cerr << e.what() << "\n";
+					return 1;
+				}
+			} else if (arg == "--cpu-speed-at" && i + 1 < argc) {
+				const string event = argv[++i];
+				const size_t separator = event.find(':');
+				if (separator == string::npos) {
+					cerr << "--cpu-speed-at requires sim_time:speed\n";
+					return 1;
+				}
+				try {
+					cpu_speed_events.push_back({std::stoull(event.substr(0, separator)) / 2,
+					                            parse_cpu_speed(event.substr(separator + 1))});
+				} catch (const std::invalid_argument& e) {
+					cerr << e.what() << "\n";
+					return 1;
+				}
 		} else if (arg == "--opl2") {
 			opl3_mode = false;
 			opl_mode_explicit = true;
@@ -1279,7 +1325,8 @@ int main(int argc, char** argv) {
 	unsigned ram_size_code = (ram_mb == 16) ? 0 :
 	                         (ram_mb == 32) ? 1 :
 	                         (ram_mb == 64) ? 2 : 3;
-	tb.status = (uint64_t{ram_size_code} << 29) |
+	tb.status = (uint64_t{cpu_speed_status} << 8) |
+	            (uint64_t{ram_size_code} << 29) |
 	            (uint64_t{!vga_border} << 54) |
 	            (uint64_t{!opl3_mode} << 57);
 	tb.ioctl_download = 0;
@@ -1299,8 +1346,6 @@ int main(int argc, char** argv) {
 		wav_writer = new WAVWriter("dsp.wav", AUDIO_SAMPLE_RATE, 2, 16);
 		cout << "Recording mixed audio to dsp.wav at " << AUDIO_SAMPLE_RATE << " Hz\n";
 	}
-
-	if (enable_trace) set_trace(true);
 
 	if (restore_path.empty()) {
 		stage_roms_to_ddr(boot0, boot1);
@@ -1791,6 +1836,9 @@ int main(int argc, char** argv) {
 		cerr << e.what() << "\n";
 		return 1;
 	}
+	// VerilatedRestore replaces the model's serialized tracing state. Attach
+	// the FST writer only after restore so checkpoint replays remain traceable.
+	if (enable_trace) set_trace(true);
 	// Checkpoints preserve MiSTer status. Override only hardware selections that
 	// were explicitly supplied for this replay.
 	if (ram_mb_explicit)
@@ -1889,9 +1937,20 @@ int main(int argc, char** argv) {
 	static constexpr uint64_t CONTROL_POLL_CYCLES = 2048;
 	uint64_t next_gui_poll_cycle = loop_start_cycle;
 	uint64_t next_control_poll_cycle = loop_start_cycle;
+	size_t next_cpu_speed_event = 0;
+	while (next_cpu_speed_event < cpu_speed_events.size() &&
+	       cpu_speed_events[next_cpu_speed_event].first < loop_start_cycle)
+		next_cpu_speed_event++;
 
 	for (uint64_t cycle = loop_start_cycle; cycle < max_cycles && running && (force_stop_cycle == 0 || cycle < force_stop_cycle); ++cycle) {
 		current_cycle = cycle;
+		while (next_cpu_speed_event < cpu_speed_events.size() &&
+		       cpu_speed_events[next_cpu_speed_event].first == cycle) {
+			const unsigned speed = cpu_speed_events[next_cpu_speed_event].second;
+			tb.status = (tb.status & ~(uint64_t{3} << 8)) | (uint64_t{speed} << 8);
+			cout << sim_time << ": CPU speed status=" << speed << "\n";
+			next_cpu_speed_event++;
+		}
 		if (control_port != 0 && cycle >= next_control_poll_cycle) {
 			next_control_poll_cycle = cycle + CONTROL_POLL_CYCLES;
 			process_control_commands();
