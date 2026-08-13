@@ -47,7 +47,7 @@ module pit(
 
 // PIT counter clock input frequency: 105/88 MHz = 1193181.81818... Hz
 // Accurate accumulator-based NCO for PIT frequency (restored to match ao486_MiSTer;
-// z386 had a simplified blocking-assignment NCO with a coarser dither pattern).
+// An earlier core used a simplified blocking-assignment NCO with coarser dither).
 localparam INCREMENT = 32'd26250000; // = 11 * (2 * PIT_frequency)
 reg [31:0] clk_rate;                 // = 11 * (clock_rate)
 always @(posedge clk) begin

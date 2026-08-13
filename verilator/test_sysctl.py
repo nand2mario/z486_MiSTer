@@ -23,7 +23,7 @@ def run(*args: str, **kwargs: object) -> subprocess.CompletedProcess[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sim", type=Path, default=THIS_DIR / "obj_dir" / "Vz386_mister_sim")
+    parser.add_argument("--sim", type=Path, default=THIS_DIR / "obj_dir" / "Vz486_mister_sim")
     parser.add_argument("--disk", type=Path, default=DEFAULT_DISK)
     parser.add_argument("--sysctl", type=Path, default=DEFAULT_SYSCTL)
     parser.add_argument("--end", type=int, default=250_000_000)
@@ -43,7 +43,7 @@ C:\\SYSCTL.EXE MENU 90\r
 ECHO SYSCTL_DONE\r
 """
 
-    with tempfile.TemporaryDirectory(prefix="z386_sysctl_") as tmp:
+    with tempfile.TemporaryDirectory(prefix="z486_sysctl_") as tmp:
         tmpdir = Path(tmp)
         disk = tmpdir / "sysctl.vhd"
         bat = tmpdir / "AUTOEXEC.BAT"

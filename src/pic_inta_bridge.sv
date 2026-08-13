@@ -1,12 +1,12 @@
-// PIC INTA Bridge: ao486 PIC handshake ↔ z386 INTA bus cycles
+// PIC INTA Bridge: ao486 PIC handshake to z486 INTA bus cycles
 //
 // ao486 PIC uses: interrupt_do (request), interrupt_vector (8-bit), interrupt_done (ack)
-// z386 uses: intr (level input), inta (2-cycle bus sequence), din (vector on 2nd INTA)
+// z486 uses: intr (level input), inta (2-cycle bus sequence), din (vector on 2nd INTA)
 //
 // Protocol:
-//   PIC.interrupt_do → z386.intr
-//   z386.inta (1st cycle) → dummy response (ready + din=0)
-//   z386.inta (2nd cycle) → return interrupt_vector, pulse interrupt_done
+//   PIC.interrupt_do to z486.intr
+//   z486.inta (1st cycle) to dummy response (ready + din=0)
+//   z486.inta (2nd cycle) to return interrupt_vector, pulse interrupt_done
 //
 `timescale 1ns/1ns
 
@@ -19,7 +19,7 @@ module pic_inta_bridge (
     input       [7:0]  pic_interrupt_vector,   // Interrupt vector number
     output reg         pic_interrupt_done,     // Acknowledge to PIC
 
-    // z386 interface
+    // z486 interface
     output reg         cpu_intr,               // Interrupt request to CPU
     input              cpu_inta,               // INTA bus cycle from CPU
     output reg [31:0]  cpu_inta_din,           // Data to CPU during INTA

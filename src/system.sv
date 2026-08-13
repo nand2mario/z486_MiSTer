@@ -1,4 +1,4 @@
-// z386 SoC — z386 CPU with ao486-derived peripherals
+// z486 SoC - z486 CPU with ao486-derived peripherals
 module system (
     input         clk_sys,
     input         reset,
@@ -307,7 +307,7 @@ wire        irq_0, irq_1, irq_2, irq_3, irq_4,
 			irq_7 /* verilator public */, 
 			irq_8, irq_9, irq_10, irq_12, irq_14, irq_15;
 
-// z386 CPU bus signals (ready/valid)
+// z486 CPU bus signals (ready/valid)
 wire [31:2] cpu_addr;
 wire  [3:0] cpu_be;
 wire  [7:0] cpu_burstcount;
@@ -384,7 +384,7 @@ wire  [7:0] dma_io_readdata;
 wire  [7:0] pic_readdata;
 wire  [7:0] vga_io_readdata;
 
-// CPU-facing external memory request bundle. z386 owns the L1 internally, so
+// CPU-facing external memory request bundle. z486 owns the L1 internally, so
 // this is the cache-fill/write-through bus, not a SoC-side cache request.
 wire [31:0] avm_address;           // byte address
 wire [31:0] avm_writedata;
@@ -422,19 +422,19 @@ wire  [1:0] video_write_mode;
 // SVGA framebuffer descriptor wires (video_*) are now module outputs.
 
 // ============================================================================
-// z386 CPU
+// z486 CPU
 // ============================================================================
 wire [31:0] dma_snoop_addr;
 wire        dma_snoop_valid;
 wire        cpu_triple_fault_reset;
 
-z386 #(
+z486 #(
     .PROTECT_UMA_ROM(1),
     .DCACHE_SET_BITS(DCACHE_SET_BITS),
     .ICACHE_SET_BITS(ICACHE_SET_BITS),
     .ENABLE_X87(ENABLE_X87),
     .CLOCK_RATE_MHZ(CPU_CLOCK_MHZ)
-) z386_cpu (
+) z486_cpu (
     .clk               (clk_sys),
     .reset_n           (cpu_reset_n),
     .addr              (cpu_addr),
@@ -493,12 +493,12 @@ pic_inta_bridge inta_bridge (
 );
 
 // ============================================================================
-// z386 → main_memory (ready/valid)
+// z486 to main_memory (ready/valid)
 // ============================================================================
 wire cpu_mem_valid = cpu_valid && !cpu_io_sig && !cpu_inta;
 wire cpu_mem_write = cpu_write;
 
-// A20 gating now lives inside z386_cpu (masked BEFORE the L1 caches via a20_mask),
+// A20 gating now lives inside z486_cpu (masked BEFORE the L1 caches via a20_mask),
 // so cpu_addr is already A20-gated here — no second mask needed.
 wire [31:0] cpu_byte_addr_raw = {cpu_addr, 2'b00};
 // Mirror the high 256 KiB reset-vector region to the copied ROM image.
@@ -507,11 +507,11 @@ wire [31:0] cpu_byte_addr = is_bios_mirror_alias
                           ? (BIOS_MIRROR_BASE + {14'd0, cpu_byte_addr_raw[17:0]})
                           : cpu_byte_addr_raw;
 
-// z386 owns the L1 internally, so UMA write-protect is handled at the CPU/cache
+// z486 owns the L1 internally, so UMA write-protect is handled at the CPU/cache
 // boundary through PROTECT_UMA_ROM. Nothing is bypassed here.
 wire cpu_mem_bypass = 1'b0;
 
-// Pass CPU external memory signals to main_memory. z386 has already handled
+// Pass CPU external memory signals to main_memory. z486 has already handled
 // cache lookup and fill sequencing internally.
 assign avm_address     = cpu_byte_addr;
 assign avm_writedata   = cpu_dout_z;
@@ -535,7 +535,7 @@ wire mem_bus_resp_valid = avm_readdatavalid;
 assign mem_bus_ready = avm_ready | mem_rom_wr_ready;
 
 // Main memory wires. During boot the SD boot writer owns this port; after boot
-// it is driven by z386's external cache-fill/write-through bus.
+// it is driven by z486's external cache-fill/write-through bus.
 wire [31:0] mm_addr, mm_din, mm_dout;
 wire  [3:0] mm_be;
 wire  [7:0] mm_burstcount;
@@ -757,12 +757,12 @@ wire [7:0] iobus_readdata8 =
 	                                             8'hFF;
 
 // ============================================================================
-// IO Bus Adapter (z386 IO cycles → byte-sequential peripheral bus)
+// IO Bus Adapter (z486 IO cycles to byte-sequential peripheral bus)
 // ============================================================================
 iobus_adapter iobus_adapter (
     .clk               (clk_sys),
     .reset_n           (~rst[0]),
-    // z386 bus
+    // z486 bus
     .cpu_addr          (cpu_addr),
     .cpu_be            (cpu_be),
     .cpu_din           (cpu_dout_z),

@@ -1,6 +1,6 @@
-// IO Bus Adapter: z386 IO bus → byte-sequential peripheral IO bus
+// IO Bus Adapter: z486 IO bus to byte-sequential peripheral IO bus
 //
-// z386 IO cycles can be 1-4 bytes (indicated by be[3:0]).
+// z486 IO cycles can be 1-4 bytes (indicated by be[3:0]).
 // ao486 peripherals are 8-bit (except the IDE data ports 0x1F0/0x170, 32-bit).
 // This FSM iterates through active byte enables, issues sequential peripheral
 // reads/writes, assembles/distributes data, then asserts ready.
@@ -16,7 +16,7 @@ module iobus_adapter (
     input              clk,
     input              reset_n,
 
-    // z386 IO bus interface (directly from CPU)
+    // z486 IO bus interface (directly from CPU)
     input      [31:2]  cpu_addr,
     input       [3:0]  cpu_be,
     input      [31:0]  cpu_din,    // data from CPU (for writes)

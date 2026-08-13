@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Vz386_mister_sim.h"
+#include "Vz486_mister_sim.h"
 
 #include <cstdint>
 #include <iosfwd>
@@ -46,7 +46,7 @@ public:
     bool open(const std::string& path);
     bool present() const { return drive_.present; }
     void set_debug(bool debug) { debug_ = debug; }
-    void tick(Vz386_mister_sim& tb);
+    void tick(Vz486_mister_sim& tb);
     void save(std::ostream& out) const;
     void load(std::istream& in);
 
@@ -71,9 +71,9 @@ private:
         WRITE_RECV
     };
 
-    void pulse_read(Vz386_mister_sim& tb, uint16_t addr);
-    void pulse_write(Vz386_mister_sim& tb, uint16_t addr, uint16_t data);
-    void clear_bus(Vz386_mister_sim& tb);
+    void pulse_read(Vz486_mister_sim& tb, uint16_t addr);
+    void pulse_write(Vz486_mister_sim& tb, uint16_t addr, uint16_t data);
+    void clear_bus(Vz486_mister_sim& tb);
     void handle_cmd();
     void set_geometry(uint16_t sectors, uint16_t heads);
     void update_identify();

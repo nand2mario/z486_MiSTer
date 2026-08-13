@@ -13,15 +13,15 @@ SDL_CFLAGS=$(shell sdl2-config --cflags)
 SDL_LIBS=$(shell sdl2-config --libs)
 PNG_CFLAGS=$(shell pkg-config --cflags libpng)
 PNG_LIBS=$(shell pkg-config --libs libpng)
-VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z386_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) -GENABLE_X87=$(ENABLE_X87) --cc --exe --build -j $(VERILATOR_BUILD_JOBS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread" -MAKEFLAGS "OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -DZ386_ALTERA_ALU=1
-VERILATOR_INCLUDE = -I../src -I../src/z386 -I../src/z386/x87
+VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z486_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) -GENABLE_X87=$(ENABLE_X87) --cc --exe --build -j $(VERILATOR_BUILD_JOBS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread" -MAKEFLAGS "OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -DZ486_ALTERA_ALU=1
+VERILATOR_INCLUDE = -I../src -I../src/z486 -I../src/z486/x87
 
 D=../src
-DZ=../src/z386
+DZ=../src/z486
 
-SOURCES = ../z386_mister_sim.sv \
+SOURCES = ../z486_mister_sim.sv \
 		  $(D)/system.sv \
-		  $(DZ)/z386_pkg.sv $(DZ)/ucode_rom.sv $(DZ)/microsequencer.sv $(DZ)/fast_issue.sv $(DZ)/z386.sv \
+		  $(DZ)/z486_pkg.sv $(DZ)/ucode_rom.sv $(DZ)/microsequencer.sv $(DZ)/hardwired_control.sv $(DZ)/z486.sv \
 		  $(DZ)/cpu_throttle.sv $(DZ)/interrupt_controller.sv \
 		  $(DZ)/data_unit.sv $(DZ)/address_unit.sv $(DZ)/shifter.sv $(DZ)/mul_div.sv $(DZ)/decoder.sv \
 		  $(DZ)/alu.sv $(DZ)/alu_alt.sv $(DZ)/prefetch.sv $(DZ)/segmentation_unit.sv \
@@ -36,7 +36,7 @@ SOURCES = ../z386_mister_sim.sv \
 		  $(DZ)/x87/x87_control.sv $(DZ)/x87/x87_unit.sv \
 		  $(DZ)/dsp_mul.sv $(DZ)/protection.sv \
 		  $(D)/iobus_adapter.sv $(D)/pic_inta_bridge.sv \
-		  $(D)/memory/main_memory.sv $(D)/z386/memory.sv $(D)/z386/l1_cache.sv $(D)/z386/l1_icache.sv $(D)/memory/sdram_sim.v \
+		  $(D)/memory/main_memory.sv $(DZ)/memory.sv $(DZ)/l1_cache.sv $(DZ)/l1_icache.sv $(D)/memory/sdram_sim.v \
 		  $(D)/soc/dma.v $(D)/soc/cdda.v $(D)/soc/floppy.v $(D)/soc/ide.v $(D)/soc/pic.v $(D)/soc/pit_counter.v $(D)/soc/joystick.v \
 		  $(D)/soc/pit.v $(D)/soc/ps2.v $(D)/soc/rtc.v $(D)/soc/vga.v \
 		  $(D)/common/dpram.v $(D)/common/simple_ram.v $(D)/common/simple_fifo.v $(D)/common/async_fifo.v \
@@ -57,17 +57,17 @@ SOURCES = ../z386_mister_sim.sv \
 
 CPP_SOURCES = main.cpp ide_hps.cpp control_server.cpp
 
-all: $(OBJ_DIR)/Vz386_mister_sim
+all: $(OBJ_DIR)/Vz486_mister_sim
 
-$(OBJ_DIR)/Vz386_mister_sim: $(SOURCES) $(CPP_SOURCES) ../src/z386/ucode.hex
-	ln -sf ../src/z386/ucode.hex .
+$(OBJ_DIR)/Vz486_mister_sim: $(SOURCES) $(CPP_SOURCES) ../src/z486/ucode.hex
+	ln -sf ../src/z486/ucode.hex .
 	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INCLUDE) $(SOURCES) $(CPP_SOURCES)
 
-run: $(OBJ_DIR)/Vz386_mister_sim
-	./$(OBJ_DIR)/Vz386_mister_sim --enter-at 10000000
+run: $(OBJ_DIR)/Vz486_mister_sim
+	./$(OBJ_DIR)/Vz486_mister_sim --enter-at 10000000
 
-trace: $(OBJ_DIR)/Vz386_mister_sim
-	./$(OBJ_DIR)/Vz386_mister_sim --trace
+trace: $(OBJ_DIR)/Vz486_mister_sim
+	./$(OBJ_DIR)/Vz486_mister_sim --trace
 
 sim85:
 	$(MAKE) OBJ_DIR=obj_dir_85 SIM_CLOCK_HZ=85000000 all

@@ -109,7 +109,7 @@ localparam ENABLE_X87 = 1'b1;     // Experimental x87 sidecar build
 localparam ENABLE_CMS = 1'b0;     // Save about 1K ALMs; OPL2/3 remains available.
 
 localparam CONF_STR = {
-	"Z386;UART115200:4000000 (Turbo 115200),MIDI;",
+	"Z486;UART115200:4000000 (Turbo 115200),MIDI;",
 	"S0,IMGIMAVFD,Floppy A:;",
 	"S1,IMGIMAVFD,Floppy B:;",
 	"O12,Write Protect,None,A:,B:,A: & B:;",

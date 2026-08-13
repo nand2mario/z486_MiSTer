@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run a Quartus fitter seed sweep for the z386 MiSTer project.
+"""Run a Quartus fitter seed sweep for the z486 MiSTer project.
 
-Serial mode edits only sweep assignments in z386_mister.qsf, restores the
+Serial mode edits only sweep assignments in z486_mister.qsf, restores the
 original file on exit, and archives reports for each seed. Parallel mode uses
 isolated per-seed work trees under the sweep output directory, including local
-copies of z386_MiSTer and z386.
+copies of z486_MiSTer and z486.
 """
 
 from __future__ import annotations
@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-PROJECT = "z386_mister"
-REVISION = "z386_mister"
+PROJECT = "z486_mister"
+REVISION = "z486_mister"
 MAIN_CLOCK_MARKER = "emu|pll|pll_inst|altera_pll_i|general[0].gpll~PLL_OUTPUT_COUNTER|divclk"
 CLK_SYS_TOP_SETUP_RPT = f"{REVISION}.clk_sys_top_setup.rpt"
 CLK_SYS_TOP_SETUP_TCL = f"{REVISION}.clk_sys_top_setup.tcl"
@@ -494,7 +494,7 @@ def main() -> int:
             if args.work_root is not None:
                 print_event("warning: --work-root is ignored; per-seed work trees live under the sweep output")
 
-            # Snapshot the project (following the src/z386 symlink) ONCE at
+            # Snapshot the project (following the src/z486 symlink) ONCE at
             # launch: per-seed work trees copy from this, so the live tree
             # can keep moving while the sweep runs.
             snapshot_dir = out_dir / "src_snapshot" / project_dir.name

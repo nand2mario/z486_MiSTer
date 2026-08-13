@@ -99,7 +99,7 @@ localparam UNMAPPED_READ = 6;
 assign fb_ddram_we       = (state == FB_WRITE);
 assign fb_ddram_burstcnt = 8'd1;
 // SVGA framebuffer base in DDR3 = byte 0x3F80_0000 = {4'h3,6'b111110,22'h0},
-// matching FB_BASE = {4'h3,6'b111110,vga_start_addr,2'b00} in z386_mister.sv.
+// matching FB_BASE = {4'h3,6'b111110,vga_start_addr,2'b00} in z486_mister.sv.
 // Chain-4 exposes packed bytes. In planar mode each aperture byte addresses a
 // four-pixel group; the request byte enable selects the aligned dword lane.
 function automatic [31:0] framebuffer_byte_address(input [5:0] bank);

@@ -280,20 +280,20 @@ void HpsIde::update_identify() {
     }
 }
 
-void HpsIde::pulse_read(Vz386_mister_sim& tb, uint16_t addr) {
+void HpsIde::pulse_read(Vz486_mister_sim& tb, uint16_t addr) {
     tb.mgmt_address = addr;
     tb.mgmt_read = 1;
     tb.mgmt_write = 0;
 }
 
-void HpsIde::pulse_write(Vz386_mister_sim& tb, uint16_t addr, uint16_t data) {
+void HpsIde::pulse_write(Vz486_mister_sim& tb, uint16_t addr, uint16_t data) {
     tb.mgmt_address = addr;
     tb.mgmt_writedata = data;
     tb.mgmt_write = 1;
     tb.mgmt_read = 0;
 }
 
-void HpsIde::clear_bus(Vz386_mister_sim& tb) {
+void HpsIde::clear_bus(Vz486_mister_sim& tb) {
     tb.mgmt_read = 0;
     tb.mgmt_write = 0;
 }
@@ -455,7 +455,7 @@ static int jitter_next() {                 // xorshift32 -> 0..63 extra idle cyc
     return (int)(x & 0x3F);
 }
 
-void HpsIde::tick(Vz386_mister_sim& tb) {
+void HpsIde::tick(Vz486_mister_sim& tb) {
     clear_bus(tb);
 
     if (tb.reset) {

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Switch z386 MiSTer Quartus build profiles.
+"""Switch z486 MiSTer Quartus build profiles.
 
 The profile controls two things that are otherwise easy to mix up:
 
 * the generated main PLL files under rtl/
 * the top-level CLOCK_RATE_HZ localparam
-* the timing/optimization assignments in z386_mister.qsf
+* the timing/optimization assignments in z486_mister.qsf
 """
 
 from __future__ import annotations
@@ -19,10 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-PROJECT = "z386_mister"
+PROJECT = "z486_mister"
 PROJECT_DIR = Path(__file__).resolve().parent
-QSF = PROJECT_DIR / "z386_mister.qsf"
-TOP = PROJECT_DIR / "z386_mister.sv"
+QSF = PROJECT_DIR / "z486_mister.qsf"
+TOP = PROJECT_DIR / "z486_mister.sv"
 PROFILES_DIR = PROJECT_DIR / "profiles"
 
 PLL_FILES = (
@@ -232,7 +232,7 @@ def main(argv: list[str]) -> int:
     if args.show:
         active = detect_active_profile()
         if active is None:
-            print("No active build_profile.py profile marker in z386_mister.qsf")
+            print("No active build_profile.py profile marker in z486_mister.qsf")
         else:
             print(f"Active profile marker: {active} ({PROFILES[active].pll_summary})")
         return 0

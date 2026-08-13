@@ -1,11 +1,11 @@
-# z386 MiSTer Verilator harness
+# z486 MiSTer Verilator harness
 
 ## Live control socket
 
 Start the simulator with a localhost TCP control socket:
 
 ```sh
-./obj_dir/Vz386_mister_sim --disk ../../sdcard/win311_auto.vhd --control-port 9386
+./obj_dir/Vz486_mister_sim --disk ../../sdcard/win311_auto.vhd --control-port 9386
 ```
 
 Send a single command with `simctl.py`:
@@ -14,7 +14,7 @@ Send a single command with `simctl.py`:
 ./simctl.py status
 ./simctl.py mouse -20 -40 0
 ./simctl.py key enter
-./simctl.py screenshot /tmp/z386.png
+./simctl.py screenshot /tmp/z486.png
 ./simctl.py checkpoint
 ```
 
@@ -50,7 +50,7 @@ left=1, right=2, and middle=4. The server binds to `127.0.0.1` by default; use
 For long boot or application runs, save a bounded set of rotating checkpoints:
 
 ```sh
-./obj_dir/Vz386_mister_sim \
+./obj_dir/Vz486_mister_sim \
   --disk /tmp/test.vhd \
   --checkpoint-dir /tmp/test-checkpoints \
   --checkpoint-interval-sec 30 \
@@ -61,7 +61,7 @@ Restore the nearest checkpoint before a failure and trace only the remaining
 window:
 
 ```sh
-./obj_dir/Vz386_mister_sim \
+./obj_dir/Vz486_mister_sim \
   --restore /tmp/test-checkpoints/ckpt_0000000123611872 \
   --trace --trace-start 247300000 --end 263000000
 ```

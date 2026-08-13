@@ -1,4 +1,4 @@
-[submodule "src/z386"]
-	path = src/z386
-	url = https://github.com/nand2mario/z386.git
-	branch = z386x
+[submodule "src/z486"]
+	path = src/z486
+	url = https://github.com/nand2mario/z486.git
+	branch = main

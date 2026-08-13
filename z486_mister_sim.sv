@@ -1,9 +1,9 @@
 //
-// z386_MiSTer top level for Verilator simulation.
+// z486_MiSTer top level for Verilator simulation.
 //
 `timescale 1ns / 1ns
 
-module z386_mister_sim (
+module z486_mister_sim (
 	input         clk_sys,
 	input         reset,
 	input         clk_audio,
@@ -204,7 +204,7 @@ always_ff @(posedge clk_sys) begin
 	end
 end
 
-z386_ps2_device ps2_kbd_sim (
+z486_ps2_device ps2_kbd_sim (
 	.clk_sys     (clk_sys),
 	.reset       (reset),
 	.ps2_clk     (clk_ps2),
@@ -219,7 +219,7 @@ z386_ps2_device ps2_kbd_sim (
 	.rd          (sim_kbd_host_data_clear)
 );
 
-z386_ps2_device ps2_mouse_sim (
+z486_ps2_device ps2_mouse_sim (
 	.clk_sys     (clk_sys),
 	.reset       (reset),
 	.ps2_clk     (clk_ps2),

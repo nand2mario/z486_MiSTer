@@ -80,6 +80,8 @@ module sound
 	input      [27:0] clock_rate
 );
 
+parameter ENABLE_CMS = 1'b1;
+
 wire sb_read  = read  & sb_cs;
 wire sb_write = write & sb_cs;
 
@@ -186,57 +188,73 @@ opl3 opl
 
 //------------------------------------------------------------------------------ c/ms
 
-wire cms_rd = (address == 4'h4 || address == 4'hB) && sb_cs && cms_en;
-wire [7:0] data_from_cms = address[3] ? cms_det : 8'h7F;
+wire       cms_rd;
+wire       cms_wr;
+wire [7:0] data_from_cms;
+wire [8:0] cms_l;
+wire [8:0] cms_r;
 
-wire cms_wr = ~address[3] & sb_cs & cms_en;
+generate
+if (ENABLE_CMS) begin : gen_cms
+	reg [7:0] cms_det;
+	reg       ce_saa;
+	reg [27:0] ce_saa_sum = 0;
 
-reg [7:0] cms_det;
-always @(posedge clk) if(write && cms_wr && &address[2:1]) cms_det <= writedata;
+	assign cms_rd = (address == 4'h4 || address == 4'hB) && sb_cs && cms_en;
+	assign cms_wr = ~address[3] & sb_cs & cms_en;
+	assign data_from_cms = address[3] ? cms_det : 8'h7F;
 
-reg ce_saa;
-// Module-scope accumulator (see ce_1us note above): a block-local `reg = 0` is
-// treated as automatic by Verilator and never accumulates.
-reg [27:0] ce_saa_sum = 0;
-always @(posedge clk) begin
-	ce_saa = 0;
-	ce_saa_sum = ce_saa_sum + 28'd7159090;
-	if(ce_saa_sum >= clk_rate) begin
-		ce_saa_sum = ce_saa_sum - clk_rate;
-		ce_saa = 1;
+	always @(posedge clk) begin
+		if (write && cms_wr && &address[2:1]) cms_det <= writedata;
+
+		ce_saa = 0;
+		ce_saa_sum = ce_saa_sum + 28'd7159090;
+		if (ce_saa_sum >= clk_rate) begin
+			ce_saa_sum = ce_saa_sum - clk_rate;
+			ce_saa = 1;
+		end
 	end
+
+	wire [7:0] saa1_l;
+	wire [7:0] saa1_r;
+	saa1099 ssa1
+	(
+		.clk_sys(clk),
+		.ce(ce_saa),
+		.rst_n(rst_n & cms_en),
+		.cs_n(~(cms_wr && (address[2:1] == 0))),
+		.a0(address[0]),
+		.wr_n(~write),
+		.din(writedata),
+		.out_l(saa1_l),
+		.out_r(saa1_r)
+	);
+
+	wire [7:0] saa2_l;
+	wire [7:0] saa2_r;
+	saa1099 ssa2
+	(
+		.clk_sys(clk),
+		.ce(ce_saa),
+		.rst_n(rst_n & cms_en),
+		.cs_n(~(cms_wr && (address[2:1] == 1))),
+		.a0(address[0]),
+		.wr_n(~write),
+		.din(writedata),
+		.out_l(saa2_l),
+		.out_r(saa2_r)
+	);
+
+	assign cms_l = {1'b0, saa1_l} + {1'b0, saa2_l};
+	assign cms_r = {1'b0, saa1_r} + {1'b0, saa2_r};
+end else begin : gen_no_cms
+	assign cms_rd = 1'b0;
+	assign cms_wr = 1'b0;
+	assign data_from_cms = 8'h00;
+	assign cms_l = 9'h000;
+	assign cms_r = 9'h000;
 end
-
-wire [7:0] saa1_l,saa1_r;
-saa1099 ssa1
-(
-	.clk_sys(clk),
-	.ce(ce_saa),
-	.rst_n(rst_n & cms_en),
-	.cs_n(~(cms_wr && (address[2:1] == 0))),
-	.a0(address[0]),
-	.wr_n(~write),
-	.din(writedata),
-	.out_l(saa1_l),
-	.out_r(saa1_r)
-);
-
-wire [7:0] saa2_l,saa2_r;
-saa1099 ssa2
-(
-	.clk_sys(clk),
-	.ce(ce_saa),
-	.rst_n(rst_n & cms_en),
-	.cs_n(~(cms_wr && (address[2:1] == 1))),
-	.a0(address[0]),
-	.wr_n(~write),
-	.din(writedata),
-	.out_l(saa2_l),
-	.out_r(saa2_r)
-);
-
-wire [8:0] cms_l = {1'b0, saa1_l} + {1'b0, saa2_l};
-wire [8:0] cms_r = {1'b0, saa1_r} + {1'b0, saa2_r};
+endgenerate
 
 //------------------------------------------------------------------------------ output mixer
 

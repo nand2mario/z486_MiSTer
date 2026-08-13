@@ -14,7 +14,7 @@ def receive_line(stream) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Send streaming PS/2 and harness commands to z386_MiSTer simulation"
+        description="Send streaming PS/2 and harness commands to z486_MiSTer simulation"
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=9386)

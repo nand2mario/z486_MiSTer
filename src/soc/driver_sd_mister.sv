@@ -1,4 +1,4 @@
-// MiSTer-oriented SD/boot bridge for z386.
+// MiSTer-oriented SD/boot bridge for z486.
 //
 // Exposes the legacy driver_sd register/DMA interface expected by system.sv,
 // but sources data from:

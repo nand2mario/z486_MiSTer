@@ -17,7 +17,7 @@ jtag.cdf
 *.xml
 *.bak
 *_sim*
-!z386_mister_sim.sv
+!z486_mister_sim.sv
 simulation/
 synthesis/
 
@@ -28,18 +28,3 @@ synthesis/
 /rtl/pll.v
 /rtl/pll/pll_0002.v
 /tests/obj_dir/
-
-# sim / sweep / build artifacts
-__pycache__/
-build_id.v
-c5_pin_model_dump.txt
-seed_sweep/
-verilator/ckpt_mat/
-verilator/*.log
-verilator/*.wav
-verilator/eip_*.txt
-verilator/*.img
-verilator/*.fst
-verilator/*.hex
-verilator/*.txt
-verilator/*.gtkw

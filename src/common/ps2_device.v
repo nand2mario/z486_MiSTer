@@ -1,5 +1,5 @@
 // PS2 device (keyboard or mouse) emulator from MiSTer
-module z386_ps2_device #(parameter PS2_FIFO_BITS=5)
+module z486_ps2_device #(parameter PS2_FIFO_BITS=5)
 (
     input        clk_sys,
     input        reset,

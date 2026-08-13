@@ -1,6 +1,6 @@
 # --------------------------------------------------------------------------
 #
-# z386 MiSTer project
+# z486 MiSTer project
 #
 # --------------------------------------------------------------------------
 
@@ -53,8 +53,8 @@ set_global_assignment -name ROUTER_REGISTER_DUPLICATION ON
 set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 set_global_assignment -name SEED 6
 # END build_profile.py settings
-set_global_assignment -name VERILOG_MACRO "Z386_QUARTUS_M10K_UCODE=1"
-set_global_assignment -name VERILOG_MACRO "Z386_ALTERA_ALU=1"
+set_global_assignment -name VERILOG_MACRO "Z486_QUARTUS_M10K_UCODE=1"
+set_global_assignment -name VERILOG_MACRO "Z486_ALTERA_ALU=1"
 # SVGA framebuffer (mode 0x101 etc.): HPS framebuffer scaler reads the DDR3 FB
 set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 set_global_assignment -name VERILOG_MACRO "MISTER_FB_PALETTE=1"
@@ -286,52 +286,52 @@ set_global_assignment -name ENABLE_SIGNALTAP OFF
 
 
 
-set_global_assignment -name MISC_FILE src/z386/ucode.mif
+set_global_assignment -name MISC_FILE src/z486/ucode.mif
 set_global_assignment -name QIP_FILE backend.qip
-set_global_assignment -name SDC_FILE z386_mister.sdc
+set_global_assignment -name SDC_FILE z486_mister.sdc
 set_global_assignment -name SEARCH_PATH sys
-set_global_assignment -name SEARCH_PATH src/z386
-set_global_assignment -name SYSTEMVERILOG_FILE z386_mister.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386_pkg.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/ucode_rom.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/microsequencer.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/fast_issue.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/cpu_throttle.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/interrupt_controller.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/data_unit.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/address_unit.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/shifter.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/mul_div.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/alu.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/alu_alt.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/decoder.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/dsp_mul.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/memory.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/l1_cache.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/l1_icache.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/paging_tlb.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/paging_unit.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/paging_walker.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/prefetch.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/protection.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/segmentation_unit.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_pkg.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_bridge.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_cordic_rom.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_cordic_scratch.sv
-set_global_assignment -name MIF_FILE src/z386/x87/x87_cordic_atan.mif
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_pkg.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_rom.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_sequencer.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_executor.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_transfer_fifo.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_stack_mem.sv
-set_global_assignment -name MIF_FILE src/z386/x87/x87_ucode.mif
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_command_rom.sv
-set_global_assignment -name MIF_FILE src/z386/x87/x87_command_decode.mif
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_control.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_unit.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386.sv
+set_global_assignment -name SEARCH_PATH src/z486
+set_global_assignment -name SYSTEMVERILOG_FILE z486_mister.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/z486_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/ucode_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/microsequencer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/hardwired_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/cpu_throttle.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/interrupt_controller.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/data_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/address_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/shifter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/mul_div.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/alu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/alu_alt.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/decoder.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/dsp_mul.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/memory.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/l1_cache.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/l1_icache.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/paging_tlb.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/paging_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/paging_walker.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/prefetch.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/protection.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/segmentation_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_bridge.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_cordic_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_cordic_scratch.sv
+set_global_assignment -name MIF_FILE src/z486/x87/x87_cordic_atan.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_ucode_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_ucode_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_sequencer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_executor.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_transfer_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_stack_mem.sv
+set_global_assignment -name MIF_FILE src/z486/x87/x87_ucode.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_command_rom.sv
+set_global_assignment -name MIF_FILE src/z486/x87/x87_command_decode.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/x87/x87_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z486/z486.sv
 
 
 

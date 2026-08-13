@@ -1,7 +1,7 @@
 #include <cstdlib>
-#include "Vz386_mister_sim.h"
-#include "Vz386_mister_sim__Syms.h"
-#include "Vz386_mister_sim_z386_mister_sim.h"
+#include "Vz486_mister_sim.h"
+#include "Vz486_mister_sim__Syms.h"
+#include "Vz486_mister_sim_z486_mister_sim.h"
 #include "verilated.h"
 #include "verilated_fst_c.h"
 #include <SDL.h>
@@ -42,7 +42,7 @@ using std::string;
 using std::vector;
 namespace fs = std::filesystem;
 
-#include "scancode.h"
+#include "../../12.386tang/verilator/scancode.h"
 
 static constexpr int H_RES = 1600;
 static constexpr int V_RES = 900;
@@ -59,7 +59,7 @@ struct Pixel {
 	uint8_t r;
 };
 
-static Vz386_mister_sim tb;
+static Vz486_mister_sim tb;
 static VerilatedFstC* trace = nullptr;
 static vluint64_t sim_time = 0;
 uint64_t g_ide_time = 0;
@@ -333,7 +333,7 @@ public:
 	bool present() const { return present_; }
 	const FloppyGeometry& geometry() const { return geo_; }
 
-	void tick(Vz386_mister_sim& tb) {
+	void tick(Vz486_mister_sim& tb) {
 		if (tb.reset) {
 			state_ = IDLE;
 			cnt_ = 0;
@@ -406,13 +406,13 @@ private:
 		WRITE_RECV
 	};
 
-	static void pulse_read(Vz386_mister_sim& tb, uint16_t addr) {
+	static void pulse_read(Vz486_mister_sim& tb, uint16_t addr) {
 		tb.mgmt_address = addr;
 		tb.mgmt_read = 1;
 		tb.mgmt_write = 0;
 	}
 
-	static void pulse_write(Vz386_mister_sim& tb, uint16_t addr, uint16_t data) {
+	static void pulse_write(Vz486_mister_sim& tb, uint16_t addr, uint16_t data) {
 		tb.mgmt_address = addr;
 		tb.mgmt_writedata = data;
 		tb.mgmt_write = 1;
@@ -597,7 +597,7 @@ static void handle_kbd_host_cmd(uint8_t cmd) {
 }
 
 static std::string current_text_screen() {
-	auto* sys = tb.z386_mister_sim->system_i;
+	auto* sys = tb.z486_mister_sim->system_i;
 	std::string text;
 	text.reserve(25 * 81);
 	uint16_t start = static_cast<uint16_t>(sys->__PVT__vga_inst__DOT__crtc_address_start);
@@ -820,7 +820,7 @@ static void configure_cmos(bool hdd0_present, bool floppy0_present, const Floppy
 	// RTC seed: fixed 2024-01-01 00:00:00 UTC, matching ao486-sim's CMOS seed.
 	// Must NOT use the host wall-clock — otherwise every run is non-deterministic
 	// AND diverges from ao486-sim (whose clock starts at 00:00:00), contaminating
-	// every INT 1Ah time read in the z386<->ao486 CS:EIP diff. gmtime_r keeps it
+	// every INT 1Ah time read in the z486<->ao486 CS:EIP diff. gmtime_r keeps it
 	// timezone-independent.
 	std::time_t now = (std::time_t)1704067200;  // 2024-01-01 00:00:00 UTC
 	std::tm tm{};
@@ -909,7 +909,7 @@ static bool dump_screen_png(const fs::path& path, int width, int height) {
 }
 
 static void usage() {
-	cout << "Usage: Vz386_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
+	cout << "Usage: Vz486_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
 }
 
 int main(int argc, char** argv) {
@@ -1288,7 +1288,7 @@ int main(int argc, char** argv) {
 			cerr << "SDL init failed: " << SDL_GetError() << "\n";
 			return 1;
 		}
-		sdl_window = SDL_CreateWindow("z386 MiSTer sim", SDL_WINDOWPOS_CENTERED,
+		sdl_window = SDL_CreateWindow("z486 MiSTer sim", SDL_WINDOWPOS_CENTERED,
 			SDL_WINDOWPOS_CENTERED, resolution_x * INITIAL_WINDOW_SCALE,
 			resolution_y * INITIAL_WINDOW_SCALE,
 			SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
@@ -1379,7 +1379,7 @@ int main(int argc, char** argv) {
 	uint64_t loop_start_cycle = 0;
 	auto next_checkpoint_at = std::chrono::steady_clock::now() +
 		std::chrono::seconds(checkpoint_interval_sec ? checkpoint_interval_sec : 1);
-	auto* core = tb.z386_mister_sim;
+	auto* core = tb.z486_mister_sim;
 	auto* sys = core->system_i;
 
 	tb.sim_kbd_data = 0;
@@ -1983,7 +1983,7 @@ int main(int argc, char** argv) {
 
 		// --- VGA attribute-controller PELWIDTH debug (mode-101 issue #5) ---
 		// {
-		// 	auto* vsys = tb.z386_mister_sim->system_i;
+		// 	auto* vsys = tb.z486_mister_sim->system_i;
 		// 	static uint8_t prev_aiw = 0, prev_pelw = 0xFF, prev_gsm = 0xFF;
 		// 	uint8_t aiw  = vsys->__PVT__vga_inst__DOT__attrib_io_write;
 		// 	uint8_t aidx = vsys->__PVT__vga_inst__DOT__attrib_io_index;
@@ -2130,7 +2130,7 @@ int main(int argc, char** argv) {
 				double elapsed_ms = (double)(now - last_title_ms);
 				bool trace_active = trace_toggle && trace_loop_started && current_cycle >= trace_start_cycle;
 				char title[192];
-				snprintf(title, sizeof(title), "z386 MiSTer - %.2f MHz%s%s",
+				snprintf(title, sizeof(title), "z486 MiSTer - %.2f MHz%s%s",
 					delta_cycles / (elapsed_ms * 1000.0),
 					trace_active ? " [TRACE]" : "",
 					mouse_captured ? " [MOUSE CAPTURED - ESC/GUI-ESC to release]" : "");
