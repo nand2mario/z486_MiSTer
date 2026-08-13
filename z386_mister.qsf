@@ -294,11 +294,19 @@ set_global_assignment -name SEARCH_PATH src/z386
 set_global_assignment -name SYSTEMVERILOG_FILE z386_mister.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/ucode_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/microsequencer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/fast_issue.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/cpu_throttle.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/interrupt_controller.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/data_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/address_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/shifter.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/mul_div.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/alu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/alu_alt.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/biu.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/decoder.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/dsp_mul.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/memory.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/l1_cache.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/l1_icache.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/paging_tlb.sv
@@ -322,6 +330,7 @@ set_global_assignment -name MIF_FILE src/z386/x87/x87_ucode.mif
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_command_rom.sv
 set_global_assignment -name MIF_FILE src/z386/x87/x87_command_decode.mif
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_unit.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386.sv
 
 

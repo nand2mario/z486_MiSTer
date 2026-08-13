@@ -21,8 +21,10 @@ DZ=../src/z386
 
 SOURCES = ../z386_mister_sim.sv \
 		  $(D)/system.sv \
-		  $(DZ)/z386_pkg.sv $(DZ)/ucode_rom.sv $(DZ)/z386.sv $(DZ)/decoder.sv \
-		  $(DZ)/alu.sv $(DZ)/alu_alt.sv $(DZ)/biu.sv $(DZ)/prefetch.sv $(DZ)/segmentation_unit.sv \
+		  $(DZ)/z386_pkg.sv $(DZ)/ucode_rom.sv $(DZ)/microsequencer.sv $(DZ)/fast_issue.sv $(DZ)/z386.sv \
+		  $(DZ)/cpu_throttle.sv $(DZ)/interrupt_controller.sv \
+		  $(DZ)/data_unit.sv $(DZ)/address_unit.sv $(DZ)/shifter.sv $(DZ)/mul_div.sv $(DZ)/decoder.sv \
+		  $(DZ)/alu.sv $(DZ)/alu_alt.sv $(DZ)/prefetch.sv $(DZ)/segmentation_unit.sv \
 		  $(DZ)/paging_unit.sv $(DZ)/paging_tlb.sv $(DZ)/paging_walker.sv \
 		  $(DZ)/x87/x87_pkg.sv $(DZ)/x87/x87_ucode_pkg.sv \
 		  $(DZ)/x87/x87_bridge.sv $(DZ)/x87/x87_cordic_rom.sv \
@@ -31,10 +33,10 @@ SOURCES = ../z386_mister_sim.sv \
 		  $(DZ)/x87/x87_sequencer.sv $(DZ)/x87/x87_executor.sv \
 		  $(DZ)/x87/x87_transfer_fifo.sv $(DZ)/x87/x87_stack_mem.sv \
 		  $(DZ)/x87/x87_command_rom.sv \
-		  $(DZ)/x87/x87_control.sv \
+		  $(DZ)/x87/x87_control.sv $(DZ)/x87/x87_unit.sv \
 		  $(DZ)/dsp_mul.sv $(DZ)/protection.sv \
 		  $(D)/iobus_adapter.sv $(D)/pic_inta_bridge.sv \
-		  $(D)/memory/main_memory.sv $(D)/z386/l1_cache.sv $(D)/z386/l1_icache.sv $(D)/memory/sdram_sim.v \
+		  $(D)/memory/main_memory.sv $(D)/z386/memory.sv $(D)/z386/l1_cache.sv $(D)/z386/l1_icache.sv $(D)/memory/sdram_sim.v \
 		  $(D)/soc/dma.v $(D)/soc/cdda.v $(D)/soc/floppy.v $(D)/soc/ide.v $(D)/soc/pic.v $(D)/soc/pit_counter.v $(D)/soc/joystick.v \
 		  $(D)/soc/pit.v $(D)/soc/ps2.v $(D)/soc/rtc.v $(D)/soc/vga.v \
 		  $(D)/common/dpram.v $(D)/common/simple_ram.v $(D)/common/simple_fifo.v $(D)/common/async_fifo.v \
