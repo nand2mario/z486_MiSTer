@@ -105,6 +105,7 @@ module emu
 localparam CLOCK_RATE_HZ = 50_000_000;
 localparam DCACHE_SET_BITS = 7;   // dcache size: 8 = 16KB, 7 = 8KB (4 ways x 16B/line)
 localparam ICACHE_SET_BITS = 7;   // icache size: 8 = 16KB, 7 = 8KB
+localparam ENABLE_CMS = 1'b0;     // Save about 1K ALMs; OPL2/3 remains available.
 
 localparam CONF_STR = {
 	"Z386;UART115200:4000000 (Turbo 115200),MIDI;",
@@ -124,13 +125,14 @@ localparam CONF_STR = {
 	"P1oM,Border,Yes,No;",
 	"P1-;",
 	"P1oP,FM mode,OPL3,OPL2 compatibility;",
-	"P1OH,C/MS,Disable,Enable;",
 	"P1OIJ,PC Speaker Volume,1,2,3,4;",
 	"P1OKL,Audio Boost,No,2x,4x;",
 	"P1oBC,Stereo Mix,none,25%,50%,100%;",
 	"P1oO,SB Swap L/R,Off,On;",
 	"-;",
 	"P2,Hardware;",
+	"P2O89,CPU Speed,Full,56 MHz,30 MHz,15 MHz;",
+	"P2-;",
 	"P2oTU,RAM Size,16MB,32MB,64MB,128MB;",
 	"P2-;",
 	"P2o01,Boot 1st,Floppy/Hard Disk,Floppy,Hard Disk,CD-ROM;",
@@ -158,6 +160,7 @@ wire        reset_req = buttons[1] | status[0];
 reg  [2:0]  reset_sync_r = 3'b111;
 
 wire [127:0] status;
+wire  [1:0] cpu_speed_osd = {status[9] ^ status[8], status[8]};
 wire  [1:0] buttons;
 wire [10:0] ps2_key;
 wire [24:0] ps2_mouse;
@@ -546,7 +549,8 @@ system #(
 	.SDRAM_HAS_DQM(1'b0),
 	.SDRAM_FAST_GRADE(1'b1),
 	.DCACHE_SET_BITS(DCACHE_SET_BITS),
-	.ICACHE_SET_BITS(ICACHE_SET_BITS)
+	.ICACHE_SET_BITS(ICACHE_SET_BITS),
+	.ENABLE_CMS(ENABLE_CMS)
 ) core (
 	.clk_sys             (clk_sys),
 	.reset               (reset_sync_r[2]),
@@ -661,6 +665,7 @@ system #(
 	.ram_size            (configured_ram_size),
 	.sdram_size          (sdram_sz[1:0]),
 	.uma_ram             (1'b0),
+	.cpu_speed_osd      (cpu_speed_osd),
 	.syscfg              (),
 
 	.video_ce            (core_ce_pixel),
@@ -691,7 +696,7 @@ system #(
 	.sample_opl_l        (sample_opl_l),
 	.sample_opl_r        (sample_opl_r),
 	.sound_fm_mode       (~status[57]),
-	.sound_cms_en        (status[17]),
+	.sound_cms_en        (1'b0),
 	.speaker_out         (speaker_out),
 	.sbp                 (sbp),
 	.vol_master_l        (vol_master_l),

@@ -125,6 +125,7 @@ module system (
     input   [1:0] ram_size,       // 0/1/2/3 = 16/32/64/128MB exposed to software
     input   [1:0] sdram_size,     // 1/2/3 = detected 32/64/128MB module geometry
     input         uma_ram,
+	input   [1:0] cpu_speed_osd,  // 0=full, 1=15, 2=30, 3=56 MHz
 	output  [7:0] syscfg,
 
 	output wire        video_ce,
@@ -196,6 +197,8 @@ parameter SDRAM_HAS_DQM = 1'b1;
 parameter SDRAM_FAST_GRADE = 1'b1;
 parameter DCACHE_SET_BITS = 8;   // dcache size: 8 = 16KB, 7 = 8KB
 parameter ICACHE_SET_BITS = 8;   // icache size: 8 = 16KB, 7 = 8KB
+parameter ENABLE_CMS = 1'b1;
+localparam [6:0] CPU_CLOCK_MHZ = SYS_FREQ / 1_000_000;
 
 assign cpu_pe      = debug_cpu_pe;
 assign cpu_vm      = debug_cpu_vm;
@@ -352,7 +355,10 @@ reg         mpu_cs;
 reg         vga_b_cs;
 reg         vga_c_cs;
 reg         vga_d_cs;
-reg         sysctl_cs;
+reg         debug_port_cs;
+reg         speedctl_cs;
+reg   [7:0] ctlport = 0;
+reg   [7:0] speedctl_low = 0;
 
 wire        fdd0_inserted;
 
@@ -418,7 +424,8 @@ wire        cpu_triple_fault_reset;
 z386 #(
     .PROTECT_UMA_ROM(1),
     .DCACHE_SET_BITS(DCACHE_SET_BITS),
-    .ICACHE_SET_BITS(ICACHE_SET_BITS)
+    .ICACHE_SET_BITS(ICACHE_SET_BITS),
+    .CLOCK_RATE_MHZ(CPU_CLOCK_MHZ)
 ) z386_cpu (
     .clk               (clk_sys),
     .reset_n           (cpu_reset_n),
@@ -438,6 +445,7 @@ z386 #(
     .snoop_addr        (dma_snoop_addr),
     .snoop_valid       (dma_snoop_valid),
     .a20_enable        (a20_enable),
+	.cpu_speed_sel     (ctlport[7] ? ctlport[1:0] : cpu_speed_osd),
     .single_step       (1'b0),
     .dbg_CS            (debug_cpu_cs),
     .dbg_EIP           (debug_cpu_eip),
@@ -736,7 +744,7 @@ wire [7:0] iobus_readdata8 =
 	( mpu_cs                                 ) ? mpu_readdata      :
 	( joy_cs                                 ) ? joystick_readdata :
 	( vga_b_cs|vga_c_cs|vga_d_cs             ) ? vga_io_readdata   :
-	( sysctl_cs                              ) ? 8'hE9             :
+	( debug_port_cs                          ) ? 8'hE9             :
 	                                             8'hFF;
 
 // ============================================================================
@@ -795,23 +803,20 @@ always @(*) begin
 	vga_b_cs      = ({iobus_address[15:4], 4'd0} == 16'h03B0);
 	vga_c_cs      = ({iobus_address[15:4], 4'd0} == 16'h03C0);
 	vga_d_cs      = ({iobus_address[15:4], 4'd0} == 16'h03D0);
-	sysctl_cs     = ({iobus_address[15:0]      } == 16'h0402);
+	debug_port_cs = ({iobus_address[15:0]      } == 16'h0402);
+	speedctl_cs   = ({iobus_address[15:1], 1'b0} == 16'h8888);
 end
 
-reg [7:0] ctlport = 0;
-reg in_reset = 1;
 always @(posedge clk_sys) begin
 	if(reset) begin
-		ctlport <= 8'hA2;
-		in_reset <= 1;
-	end
-	else if((ide0_cs|ide1_cs|floppy0_cs) && in_reset) begin
 		ctlport <= 0;
-		in_reset <= 0;
+		speedctl_low <= 0;
 	end
-	else if(iobus_write && sysctl_cs) begin
-		ctlport <= iobus_writedata_byte;
-		in_reset <= 0;
+	else if(iobus_write && speedctl_cs) begin
+		if(!iobus_address[0])
+			speedctl_low <= iobus_writedata_byte;
+		else if(iobus_writedata_byte == 8'hA1)
+			ctlport <= speedctl_low;
 	end
 end
 
@@ -1112,7 +1117,9 @@ rtc rtc
 	.irq               (irq_8)
 );
 
-sound sound
+sound #(
+	.ENABLE_CMS(ENABLE_CMS)
+) sound
 (
 	.clk               (clk_sys),
 	.clk_audio         (clk_audio),
@@ -1673,7 +1680,7 @@ defparam mpu_uart_tx_i.clk_freq  = SYS_FREQ;
 defparam mpu_uart_tx_i.uart_freq = 31250;
 
 // Export debug byte for UART bridge to wrap as type 0x07
-wire bios_dbg_write = iobus_write && sysctl_cs;
+wire bios_dbg_write = iobus_write && debug_port_cs;
 assign dbg_uart_byte = bios_dbg_write ? iobus_writedata_byte : watchdog_uart_byte;
 assign dbg_uart_we   = bios_dbg_write | watchdog_uart_we;
 

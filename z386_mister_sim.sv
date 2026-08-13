@@ -315,7 +315,8 @@ system #(
 	.SDRAM_HAS_DQM(1'b0),
 	.SDRAM_FAST_GRADE(1'b1),
 	.DCACHE_SET_BITS(7),   // DEBUG: reproduce 8KB doom crash
-	.ICACHE_SET_BITS(7)
+	.ICACHE_SET_BITS(7),
+	.ENABLE_CMS(1'b0)
 ) system_i (
 	.clk_sys             (clk_sys),
 	.reset               (core_reset),
@@ -418,6 +419,7 @@ system #(
 	.ram_size            (status[30:29]),
 	.sdram_size          (2'd3),
 	.uma_ram             (1'b0),
+	.cpu_speed_osd      (2'd0),
 	.syscfg              (syscfg),
 
 	.video_ce            (video_ce),
