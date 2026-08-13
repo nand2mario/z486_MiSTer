@@ -279,6 +279,18 @@ set_global_assignment -name SYSTEMVERILOG_FILE src/z386/paging_walker.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/prefetch.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/protection.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/segmentation_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_bridge.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_cordic_rom.sv
+set_global_assignment -name MIF_FILE src/z386/x87/x87_cordic_atan.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_pkg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_sequencer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_executor.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_transfer_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_stack_mem.sv
+set_global_assignment -name MIF_FILE src/z386/x87/x87_ucode.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_core.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386.sv
 
 

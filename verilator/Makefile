@@ -2,6 +2,7 @@ VERILATOR = verilator
 VERILATOR_BUILD_JOBS ?= 8
 SIM_OPT_LEVEL ?= -O2
 SIM_CLOCK_HZ ?= 20000000
+ENABLE_X87 ?= 0
 OBJ_DIR ?= obj_dir
 ifeq ($(shell uname -s),Darwin)
 SIM_ARCH_FLAGS ?= -mcpu=native
@@ -12,8 +13,8 @@ SDL_CFLAGS=$(shell sdl2-config --cflags)
 SDL_LIBS=$(shell sdl2-config --libs)
 PNG_CFLAGS=$(shell pkg-config --cflags libpng)
 PNG_LIBS=$(shell pkg-config --libs libpng)
-VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z386_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) --cc --exe --build -j $(VERILATOR_BUILD_JOBS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread" -MAKEFLAGS "OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -DZ386_ALTERA_ALU=1
-VERILATOR_INCLUDE = -I../src -I../src/z386
+VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z386_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) -GENABLE_X87=$(ENABLE_X87) --cc --exe --build -j $(VERILATOR_BUILD_JOBS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread" -MAKEFLAGS "OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -DZ386_ALTERA_ALU=1
+VERILATOR_INCLUDE = -I../src -I../src/z386 -I../src/z386/x87
 
 D=../src
 DZ=../src/z386
@@ -23,6 +24,12 @@ SOURCES = ../z386_mister_sim.sv \
 		  $(DZ)/z386_pkg.sv $(DZ)/ucode_rom.sv $(DZ)/z386.sv $(DZ)/decoder.sv \
 		  $(DZ)/alu.sv $(DZ)/alu_alt.sv $(DZ)/biu.sv $(DZ)/prefetch.sv $(DZ)/segmentation_unit.sv \
 		  $(DZ)/paging_unit.sv $(DZ)/paging_tlb.sv $(DZ)/paging_walker.sv \
+		  $(DZ)/x87/x87_pkg.sv $(DZ)/x87/x87_ucode_pkg.sv \
+		  $(DZ)/x87/x87_bridge.sv $(DZ)/x87/x87_cordic_rom.sv \
+		  $(DZ)/x87/x87_ucode_rom.sv \
+		  $(DZ)/x87/x87_sequencer.sv $(DZ)/x87/x87_executor.sv \
+		  $(DZ)/x87/x87_transfer_fifo.sv $(DZ)/x87/x87_stack_mem.sv \
+		  $(DZ)/x87/x87_core.sv \
 		  $(DZ)/dsp_mul.sv $(DZ)/protection.sv \
 		  $(D)/iobus_adapter.sv $(D)/pic_inta_bridge.sv \
 		  $(D)/memory/main_memory.sv $(D)/z386/l1_cache.sv $(D)/z386/l1_icache.sv $(D)/memory/sdram_sim.v \
@@ -61,8 +68,14 @@ trace: $(OBJ_DIR)/Vz386_mister_sim
 sim85:
 	$(MAKE) OBJ_DIR=obj_dir_85 SIM_CLOCK_HZ=85000000 all
 
+x87:
+	$(MAKE) OBJ_DIR=obj_dir_x87 ENABLE_X87=1 all
+
+x87-50:
+	$(MAKE) OBJ_DIR=obj_dir_x87_50 SIM_CLOCK_HZ=50000000 ENABLE_X87=1 all
+
 clean:
 	rm -rf $(OBJ_DIR) obj_dir_trace
 	rm -f ucode.hex waveform.fst
 
-.PHONY: all run trace sim85 clean
+.PHONY: all run trace sim85 x87 x87-50 clean

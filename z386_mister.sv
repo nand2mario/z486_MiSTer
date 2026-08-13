@@ -105,6 +105,7 @@ module emu
 localparam CLOCK_RATE_HZ = 50_000_000;
 localparam DCACHE_SET_BITS = 7;   // dcache size: 8 = 16KB, 7 = 8KB (4 ways x 16B/line)
 localparam ICACHE_SET_BITS = 7;   // icache size: 8 = 16KB, 7 = 8KB
+localparam ENABLE_X87 = 1'b1;     // Experimental x87 sidecar build
 localparam ENABLE_CMS = 1'b0;     // Save about 1K ALMs; OPL2/3 remains available.
 
 localparam CONF_STR = {
@@ -550,6 +551,7 @@ system #(
 	.SDRAM_FAST_GRADE(1'b1),
 	.DCACHE_SET_BITS(DCACHE_SET_BITS),
 	.ICACHE_SET_BITS(ICACHE_SET_BITS),
+	.ENABLE_X87(ENABLE_X87),
 	.ENABLE_CMS(ENABLE_CMS)
 ) core (
 	.clk_sys             (clk_sys),

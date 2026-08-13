@@ -197,6 +197,7 @@ parameter SDRAM_HAS_DQM = 1'b1;
 parameter SDRAM_FAST_GRADE = 1'b1;
 parameter DCACHE_SET_BITS = 8;   // dcache size: 8 = 16KB, 7 = 8KB
 parameter ICACHE_SET_BITS = 8;   // icache size: 8 = 16KB, 7 = 8KB
+parameter ENABLE_X87 = 1'b0;
 parameter ENABLE_CMS = 1'b1;
 localparam [6:0] CPU_CLOCK_MHZ = SYS_FREQ / 1_000_000;
 
@@ -425,6 +426,7 @@ z386 #(
     .PROTECT_UMA_ROM(1),
     .DCACHE_SET_BITS(DCACHE_SET_BITS),
     .ICACHE_SET_BITS(ICACHE_SET_BITS),
+    .ENABLE_X87(ENABLE_X87),
     .CLOCK_RATE_MHZ(CPU_CLOCK_MHZ)
 ) z386_cpu (
     .clk               (clk_sys),

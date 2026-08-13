@@ -90,6 +90,7 @@ module z386_mister_sim (
 
 // The simulation build overrides this parameter for speed-sensitive testing.
 parameter [27:0] CLOCK_RATE_HZ = 28'd20_000_000;
+parameter ENABLE_X87 = 1'b0;
 
 wire        software_reset;
 reg  [7:0]  software_reset_count;
@@ -316,6 +317,7 @@ system #(
 	.SDRAM_FAST_GRADE(1'b1),
 	.DCACHE_SET_BITS(7),   // DEBUG: reproduce 8KB doom crash
 	.ICACHE_SET_BITS(7),
+	.ENABLE_X87(ENABLE_X87),
 	.ENABLE_CMS(1'b0)
 ) system_i (
 	.clk_sys             (clk_sys),
