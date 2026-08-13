@@ -259,14 +259,19 @@ reg  [15:0] watchdog_cs_last;
 reg  [31:0] watchdog_cpu_stall_count;
 reg  [31:0] watchdog_mm_stall_count;
 reg  [31:0] watchdog_bus_stall_count;
+reg  [31:0] watchdog_x87_stall_count;
 reg         watchdog_cpu_reported;
 reg         watchdog_mm_reported;
 reg         watchdog_bus_reported;
+reg         watchdog_x87_reported;
 reg         watchdog_uart_active;
 reg   [1:0] watchdog_uart_msg;
-reg   [4:0] watchdog_uart_index;
+reg   [5:0] watchdog_uart_index;
 reg   [7:0] watchdog_uart_byte;
 reg         watchdog_uart_we;
+reg  [15:0] watchdog_cs_snapshot;
+reg  [31:0] watchdog_eip_snapshot;
+reg  [31:0] watchdog_x87_snapshot;
 
 // Debug signals from CPU
 wire [31:0] debug_cpu_eip;
@@ -274,6 +279,7 @@ wire [15:0] debug_cpu_cs;
 wire [31:0] debug_cpu_cs_base;
 wire        debug_cpu_pe;
 wire        debug_cpu_vm;
+wire [31:0] debug_x87_state;
 
 localparam BOOT_IDLE       = 0;
 localparam BOOT_DDR_REQ    = 1;
@@ -454,6 +460,7 @@ z386 #(
     .dbg_CS_base       (debug_cpu_cs_base),
     .dbg_pe            (debug_cpu_pe),
     .dbg_vm            (debug_cpu_vm),
+    .dbg_x87_state     (debug_x87_state),
     .triple_fault_reset(cpu_triple_fault_reset)
 );
 
@@ -1275,71 +1282,62 @@ assign debug_vga_bios_sig_bad = vga_bios_sig_bad;
 assign debug_vga_bios_sig_checked = vga_bios_sig_checked;
 assign debug_first_instruction = first_instruction_executed;
 
-function [7:0] watchdog_msg_char(input [1:0] msg, input [4:0] index);
+function [7:0] watchdog_hex(input [3:0] nibble);
 begin
-    case (msg)
-    2'd0: begin
-        case (index)
-        5'd0: watchdog_msg_char = "Z";
-        5'd1: watchdog_msg_char = "3";
-        5'd2: watchdog_msg_char = "8";
-        5'd3: watchdog_msg_char = "6";
-        5'd4: watchdog_msg_char = " ";
-        5'd5: watchdog_msg_char = "S";
-        5'd6: watchdog_msg_char = "T";
-        5'd7: watchdog_msg_char = "A";
-        5'd8: watchdog_msg_char = "L";
-        5'd9: watchdog_msg_char = "L";
-        5'd10: watchdog_msg_char = " ";
-        5'd11: watchdog_msg_char = "C";
-        5'd12: watchdog_msg_char = "P";
-        5'd13: watchdog_msg_char = "U";
-        5'd14: watchdog_msg_char = 8'h0D;
-        5'd15: watchdog_msg_char = 8'h0A;
+    watchdog_hex = (nibble < 4'd10) ? ("0" + nibble) : ("A" + nibble - 4'd10);
+end
+endfunction
+
+function [7:0] watchdog_msg_char(input [1:0] msg, input [5:0] index);
+begin
+    // R=0 CPU, R=1 memory manager, R=2 external bus, R=3 x87.
+    case (index)
+        6'd0: watchdog_msg_char = "Z";
+        6'd1: watchdog_msg_char = "3";
+        6'd2: watchdog_msg_char = "8";
+        6'd3: watchdog_msg_char = "6";
+        6'd4: watchdog_msg_char = " ";
+        6'd5: watchdog_msg_char = "S";
+        6'd6: watchdog_msg_char = "T";
+        6'd7: watchdog_msg_char = "A";
+        6'd8: watchdog_msg_char = "L";
+        6'd9: watchdog_msg_char = "L";
+        6'd10: watchdog_msg_char = " ";
+        6'd11: watchdog_msg_char = "R";
+        6'd12: watchdog_msg_char = "=";
+        6'd13: watchdog_msg_char = watchdog_hex({2'b00, msg});
+        6'd14: watchdog_msg_char = " ";
+        6'd15: watchdog_msg_char = "C";
+        6'd16: watchdog_msg_char = "=";
+        6'd17: watchdog_msg_char = watchdog_hex(watchdog_cs_snapshot[15:12]);
+        6'd18: watchdog_msg_char = watchdog_hex(watchdog_cs_snapshot[11:8]);
+        6'd19: watchdog_msg_char = watchdog_hex(watchdog_cs_snapshot[7:4]);
+        6'd20: watchdog_msg_char = watchdog_hex(watchdog_cs_snapshot[3:0]);
+        6'd21: watchdog_msg_char = " ";
+        6'd22: watchdog_msg_char = "E";
+        6'd23: watchdog_msg_char = "=";
+        6'd24: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[31:28]);
+        6'd25: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[27:24]);
+        6'd26: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[23:20]);
+        6'd27: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[19:16]);
+        6'd28: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[15:12]);
+        6'd29: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[11:8]);
+        6'd30: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[7:4]);
+        6'd31: watchdog_msg_char = watchdog_hex(watchdog_eip_snapshot[3:0]);
+        6'd32: watchdog_msg_char = " ";
+        6'd33: watchdog_msg_char = "X";
+        6'd34: watchdog_msg_char = "=";
+        6'd35: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[31:28]);
+        6'd36: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[27:24]);
+        6'd37: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[23:20]);
+        6'd38: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[19:16]);
+        6'd39: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[15:12]);
+        6'd40: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[11:8]);
+        6'd41: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[7:4]);
+        6'd42: watchdog_msg_char = watchdog_hex(watchdog_x87_snapshot[3:0]);
+        6'd43: watchdog_msg_char = 8'h0D;
+        6'd44: watchdog_msg_char = 8'h0A;
         default: watchdog_msg_char = 8'h00;
-        endcase
-    end
-    2'd1: begin
-        case (index)
-        5'd0: watchdog_msg_char = "Z";
-        5'd1: watchdog_msg_char = "3";
-        5'd2: watchdog_msg_char = "8";
-        5'd3: watchdog_msg_char = "6";
-        5'd4: watchdog_msg_char = " ";
-        5'd5: watchdog_msg_char = "S";
-        5'd6: watchdog_msg_char = "T";
-        5'd7: watchdog_msg_char = "A";
-        5'd8: watchdog_msg_char = "L";
-        5'd9: watchdog_msg_char = "L";
-        5'd10: watchdog_msg_char = " ";
-        5'd11: watchdog_msg_char = "M";
-        5'd12: watchdog_msg_char = "M";
-        5'd13: watchdog_msg_char = 8'h0D;
-        5'd14: watchdog_msg_char = 8'h0A;
-        default: watchdog_msg_char = 8'h00;
-        endcase
-    end
-    default: begin
-        case (index)
-        5'd0: watchdog_msg_char = "Z";
-        5'd1: watchdog_msg_char = "3";
-        5'd2: watchdog_msg_char = "8";
-        5'd3: watchdog_msg_char = "6";
-        5'd4: watchdog_msg_char = " ";
-        5'd5: watchdog_msg_char = "S";
-        5'd6: watchdog_msg_char = "T";
-        5'd7: watchdog_msg_char = "A";
-        5'd8: watchdog_msg_char = "L";
-        5'd9: watchdog_msg_char = "L";
-        5'd10: watchdog_msg_char = " ";
-        5'd11: watchdog_msg_char = "B";
-        5'd12: watchdog_msg_char = "U";
-        5'd13: watchdog_msg_char = "S";
-        5'd14: watchdog_msg_char = 8'h0D;
-        5'd15: watchdog_msg_char = 8'h0A;
-        default: watchdog_msg_char = 8'h00;
-        endcase
-    end
     endcase
 end
 endfunction
@@ -1355,19 +1353,25 @@ always @(posedge clk_sys) begin
         watchdog_cpu_stall_count <= 32'd0;
         watchdog_mm_stall_count <= 32'd0;
         watchdog_bus_stall_count <= 32'd0;
+        watchdog_x87_stall_count <= 32'd0;
         watchdog_cpu_reported <= 1'b0;
         watchdog_mm_reported <= 1'b0;
         watchdog_bus_reported <= 1'b0;
+        watchdog_x87_reported <= 1'b0;
         watchdog_uart_active <= 1'b0;
         watchdog_uart_msg <= 2'd0;
-        watchdog_uart_index <= 5'd0;
+        watchdog_uart_index <= 6'd0;
         watchdog_uart_byte <= 8'd0;
+        watchdog_cs_snapshot <= 16'd0;
+        watchdog_eip_snapshot <= 32'd0;
+        watchdog_x87_snapshot <= 32'd0;
     end else begin
         if (boot_done && cpu_reset_n) begin
             if (debug_cpu_eip != watchdog_eip_last || debug_cpu_cs != watchdog_cs_last) begin
                 watchdog_eip_last <= debug_cpu_eip;
                 watchdog_cs_last <= debug_cpu_cs;
                 watchdog_cpu_stall_count <= 32'd0;
+                watchdog_cpu_reported <= 1'b0;
             end else if (watchdog_cpu_stall_count != WATCHDOG_STALL_CYCLES) begin
                 watchdog_cpu_stall_count <= watchdog_cpu_stall_count + 32'd1;
             end
@@ -1377,6 +1381,7 @@ always @(posedge clk_sys) begin
                     watchdog_mm_stall_count <= watchdog_mm_stall_count + 32'd1;
             end else begin
                 watchdog_mm_stall_count <= 32'd0;
+                watchdog_mm_reported <= 1'b0;
             end
 
             if (cpu_mem_valid && !mem_bus_ready) begin
@@ -1384,23 +1389,49 @@ always @(posedge clk_sys) begin
                     watchdog_bus_stall_count <= watchdog_bus_stall_count + 32'd1;
             end else begin
                 watchdog_bus_stall_count <= 32'd0;
+                watchdog_bus_reported <= 1'b0;
             end
 
-            if (!watchdog_uart_active && watchdog_mm_stall_count == WATCHDOG_STALL_CYCLES && !watchdog_mm_reported) begin
+            if (!debug_x87_state[31]) begin
+                if (watchdog_x87_stall_count != WATCHDOG_STALL_CYCLES)
+                    watchdog_x87_stall_count <= watchdog_x87_stall_count + 32'd1;
+            end else begin
+                watchdog_x87_stall_count <= 32'd0;
+                watchdog_x87_reported <= 1'b0;
+            end
+
+            if (!watchdog_uart_active && watchdog_x87_stall_count == WATCHDOG_STALL_CYCLES && !watchdog_x87_reported) begin
+                watchdog_uart_active <= 1'b1;
+                watchdog_uart_msg <= 2'd3;
+                watchdog_uart_index <= 6'd0;
+                watchdog_x87_reported <= 1'b1;
+                watchdog_cs_snapshot <= debug_cpu_cs;
+                watchdog_eip_snapshot <= debug_cpu_eip;
+                watchdog_x87_snapshot <= debug_x87_state;
+            end else if (!watchdog_uart_active && watchdog_mm_stall_count == WATCHDOG_STALL_CYCLES && !watchdog_mm_reported) begin
                 watchdog_uart_active <= 1'b1;
                 watchdog_uart_msg <= 2'd1;
-                watchdog_uart_index <= 5'd0;
+                watchdog_uart_index <= 6'd0;
                 watchdog_mm_reported <= 1'b1;
+                watchdog_cs_snapshot <= debug_cpu_cs;
+                watchdog_eip_snapshot <= debug_cpu_eip;
+                watchdog_x87_snapshot <= debug_x87_state;
             end else if (!watchdog_uart_active && watchdog_bus_stall_count == WATCHDOG_STALL_CYCLES && !watchdog_bus_reported) begin
                 watchdog_uart_active <= 1'b1;
                 watchdog_uart_msg <= 2'd2;
-                watchdog_uart_index <= 5'd0;
+                watchdog_uart_index <= 6'd0;
                 watchdog_bus_reported <= 1'b1;
+                watchdog_cs_snapshot <= debug_cpu_cs;
+                watchdog_eip_snapshot <= debug_cpu_eip;
+                watchdog_x87_snapshot <= debug_x87_state;
             end else if (!watchdog_uart_active && watchdog_cpu_stall_count == WATCHDOG_STALL_CYCLES && !watchdog_cpu_reported) begin
                 watchdog_uart_active <= 1'b1;
                 watchdog_uart_msg <= 2'd0;
-                watchdog_uart_index <= 5'd0;
+                watchdog_uart_index <= 6'd0;
                 watchdog_cpu_reported <= 1'b1;
+                watchdog_cs_snapshot <= debug_cpu_cs;
+                watchdog_eip_snapshot <= debug_cpu_eip;
+                watchdog_x87_snapshot <= debug_x87_state;
             end
         end else begin
             watchdog_eip_last <= debug_cpu_eip;
@@ -1408,6 +1439,7 @@ always @(posedge clk_sys) begin
             watchdog_cpu_stall_count <= 32'd0;
             watchdog_mm_stall_count <= 32'd0;
             watchdog_bus_stall_count <= 32'd0;
+            watchdog_x87_stall_count <= 32'd0;
         end
 
         if (watchdog_uart_active) begin

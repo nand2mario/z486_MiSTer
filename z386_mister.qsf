@@ -22,15 +22,43 @@ set_global_assignment -name POWER_PRESET_COOLING_SOLUTION "23 MM HEAT SINK WITH 
 set_global_assignment -name POWER_BOARD_THERMAL_MODEL "NONE (CONSERVATIVE)"
 set_global_assignment -name TIMEQUEST_MULTICORNER_ANALYSIS OFF
 # BEGIN build_profile.py settings
-# Active profile: base
-# 50 MHz clk_sys, 225 degree SDRAM clock, conservative Quartus optimization
-set_global_assignment -name OPTIMIZATION_MODE BALANCED
+# Active profile: production
+# 85 MHz clk_sys, 180 degree SDRAM clock, area-aware high-performance fit
+set_global_assignment -name OPTIMIZE_POWER_DURING_FITTING OFF
+set_global_assignment -name FINAL_PLACEMENT_OPTIMIZATION ALWAYS
+set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
+set_global_assignment -name OPTIMIZATION_MODE "HIGH PERFORMANCE EFFORT"
+set_global_assignment -name ALLOW_POWER_UP_DONT_CARE ON
+set_global_assignment -name QII_AUTO_PACKED_REGISTERS "SPARSE AUTO"
+set_global_assignment -name ROUTER_LCELL_INSERTION_AND_LOGIC_DUPLICATION ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_EFFORT EXTRA
+set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING ON
+set_global_assignment -name OPTIMIZATION_TECHNIQUE SPEED
+set_global_assignment -name MUX_RESTRUCTURE ON
+set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
+set_global_assignment -name AUTO_DELAY_CHAINS_FOR_HIGH_FANOUT_INPUT_PINS ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA ON
+set_global_assignment -name ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP ON
+set_global_assignment -name SYNTH_GATED_CLOCK_CONVERSION ON
+set_global_assignment -name PRE_MAPPING_RESYNTHESIS ON
+set_global_assignment -name ROUTER_CLOCKING_TOPOLOGY_ANALYSIS ON
+set_global_assignment -name ECO_OPTIMIZE_TIMING ON
+set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
+set_global_assignment -name ALM_REGISTER_PACKING_EFFORT LOW
+set_global_assignment -name OPTIMIZE_POWER_DURING_SYNTHESIS OFF
+set_global_assignment -name ROUTER_REGISTER_DUPLICATION ON
+set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
+set_global_assignment -name SEED 6
 # END build_profile.py settings
 set_global_assignment -name VERILOG_MACRO "Z386_QUARTUS_M10K_UCODE=1"
 set_global_assignment -name VERILOG_MACRO "Z386_ALTERA_ALU=1"
 # SVGA framebuffer (mode 0x101 etc.): HPS framebuffer scaler reads the DDR3 FB
 set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 set_global_assignment -name VERILOG_MACRO "MISTER_FB_PALETTE=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_NEAREST_ONLY=1"
 
 source sys/sys.tcl
 set_global_assignment -name FAMILY "Cyclone V"
@@ -282,6 +310,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE src/z386/segmentation_unit.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_bridge.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_cordic_rom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_cordic_scratch.sv
 set_global_assignment -name MIF_FILE src/z386/x87/x87_cordic_atan.mif
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_pkg.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_ucode_rom.sv
@@ -290,7 +319,9 @@ set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_executor.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_transfer_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_stack_mem.sv
 set_global_assignment -name MIF_FILE src/z386/x87/x87_ucode.mif
-set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_command_rom.sv
+set_global_assignment -name MIF_FILE src/z386/x87/x87_command_decode.mif
+set_global_assignment -name SYSTEMVERILOG_FILE src/z386/x87/x87_control.sv
 set_global_assignment -name SYSTEMVERILOG_FILE src/z386/z386.sv
 
 

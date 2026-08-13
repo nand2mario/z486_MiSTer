@@ -26,10 +26,12 @@ SOURCES = ../z386_mister_sim.sv \
 		  $(DZ)/paging_unit.sv $(DZ)/paging_tlb.sv $(DZ)/paging_walker.sv \
 		  $(DZ)/x87/x87_pkg.sv $(DZ)/x87/x87_ucode_pkg.sv \
 		  $(DZ)/x87/x87_bridge.sv $(DZ)/x87/x87_cordic_rom.sv \
+		  $(DZ)/x87/x87_cordic_scratch.sv \
 		  $(DZ)/x87/x87_ucode_rom.sv \
 		  $(DZ)/x87/x87_sequencer.sv $(DZ)/x87/x87_executor.sv \
 		  $(DZ)/x87/x87_transfer_fifo.sv $(DZ)/x87/x87_stack_mem.sv \
-		  $(DZ)/x87/x87_core.sv \
+		  $(DZ)/x87/x87_command_rom.sv \
+		  $(DZ)/x87/x87_control.sv \
 		  $(DZ)/dsp_mul.sv $(DZ)/protection.sv \
 		  $(D)/iobus_adapter.sv $(D)/pic_inta_bridge.sv \
 		  $(D)/memory/main_memory.sv $(D)/z386/l1_cache.sv $(D)/z386/l1_icache.sv $(D)/memory/sdram_sim.v \

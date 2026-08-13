@@ -701,6 +701,12 @@ wire         bob_deint;
 
 	ascal 
 	#(
+	`ifdef MISTER_NEAREST_ONLY
+		// Keep aspect scaling and downscaling while compiling out optional filters.
+		.MASK(8'h01),
+		.ADAPTIVE("false"),
+		.DOWNSCALE_NN("true"),
+	`endif
 		.RAMBASE(32'h20000000),
 	`ifdef MISTER_SMALL_VBUF
 		.RAMSIZE(32'h00200000),
@@ -714,13 +720,19 @@ wire         bob_deint;
 			.PALETTE2("false"),
 		`endif
 	`endif
+	`ifndef MISTER_NEAREST_ONLY
 	`ifdef MISTER_DISABLE_ADAPTIVE
 		.ADAPTIVE("false"),
 	`endif
 	`ifdef MISTER_DOWNSCALE_NN
 		.DOWNSCALE_NN("true"),
 	`endif
+	`endif
+	`ifdef MISTER_NEAREST_ONLY
+		.FRAC(4),
+	`else
 		.FRAC(8),
+	`endif
 		.N_DW(128),
 		.N_AW(28)
 	)
@@ -773,9 +785,17 @@ wire         bob_deint;
 		.vrrmax   (HEIGHT + VBP + VS[11:0] + 12'd1),
 		.swblack  (hdmi_blackout),
 
+	`ifdef MISTER_NEAREST_ONLY
+		.mode     (5'b00000),
+	`else
 		.mode     ({~lowlat,LFB_EN ? LFB_FLT : |scaler_flt,2'b00}),
+	`endif
 		.poly_clk (clk_sys),
+	`ifdef MISTER_NEAREST_ONLY
+		.poly_a   (coef_addr[7:0]),
+	`else
 		.poly_a   (coef_addr),
+	`endif
 		.poly_dw  (coef_data),
 		.poly_wr  (coef_wr),
 

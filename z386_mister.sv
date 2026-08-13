@@ -102,7 +102,7 @@ module emu
 	input         OSD_STATUS
 );
 
-localparam CLOCK_RATE_HZ = 50_000_000;
+localparam CLOCK_RATE_HZ = 85_000_000;
 localparam DCACHE_SET_BITS = 7;   // dcache size: 8 = 16KB, 7 = 8KB (4 ways x 16B/line)
 localparam ICACHE_SET_BITS = 7;   // icache size: 8 = 16KB, 7 = 8KB
 localparam ENABLE_X87 = 1'b1;     // Experimental x87 sidecar build
