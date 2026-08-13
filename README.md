@@ -6,8 +6,9 @@ CPU written in SystemVerilog. The processor combines a fast frontend and
 hardwired implementations of common instructions with microcoded control for
 complex x86 operations. It also includes an integrated x87 floating-point unit.
 
-The core runs the Doom timedemo at 29.1 FPS at maximum detail, compared with
-21.0 FPS on ao486 using the same MiSTer setup.
+The core delivers roughly 486DX2-66-class performance. It runs the Doom
+timedemo at 29.1 FPS at maximum detail, compared with 21.0 FPS on ao486 using
+the same MiSTer setup.
 
 The core uses MiSTer SDRAM for system memory and supports 16, 32, 64, or 128 MB
 configurations. Video hardware provides VGA and ET4000-compatible SVGA modes.
