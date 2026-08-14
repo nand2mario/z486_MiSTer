@@ -52,6 +52,7 @@ PROFILES: dict[str, Profile] = {
         clock_rate_hz=50_000_000,
         assignments=(
             ("OPTIMIZATION_MODE", "BALANCED"),
+            ("ALLOW_POWER_UP_DONT_CARE", "ON"),
         ),
     ),
     "debug": Profile(
@@ -61,6 +62,7 @@ PROFILES: dict[str, Profile] = {
         clock_rate_hz=65_000_000,
         assignments=(
             ("OPTIMIZATION_MODE", "BALANCED"),
+            ("ALLOW_POWER_UP_DONT_CARE", "ON"),
         ),
     ),
     "production": Profile(

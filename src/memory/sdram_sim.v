@@ -70,6 +70,14 @@ module sdram
 // Expose for Verilator C++ testbench via hierarchy access
 reg [15:0] mem [0:64*1024*1024-1] /* verilator public_flat_rw */ ;  // 128MB maximum
 
+// Real SDRAM has undefined contents after power-up. Keep the normal zeroed
+// simulation behavior for reproducible tests, but allow software to be checked
+// against a board-like 16MB random power-up image.
+initial if ($test$plusargs("random_sdram")) begin
+    for (integer i = 0; i < 8*1024*1024; i = i + 1)
+        mem[i] = $urandom;
+end
+
 // Fast simulation mode: 1-cycle response, no SDRAM timing
 reg fast_mem;
 initial fast_mem = $test$plusargs("fast_mem");
