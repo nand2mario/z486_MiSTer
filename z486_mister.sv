@@ -123,6 +123,7 @@ localparam CONF_STR = {
 	"P1,Audio & Video;",
 	"P1-;",
 	"P1OMN,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
+	"P1O4,VSync,60Hz,Variable;",
 	"P1oM,Border,Yes,No;",
 	"P1-;",
 	"P1oP,FM mode,OPL3,OPL2 compatibility;",
@@ -134,7 +135,7 @@ localparam CONF_STR = {
 	"P2,Hardware;",
 	"P2O89,CPU Speed,Full,56 MHz,30 MHz,15 MHz;",
 	"P2-;",
-	"P2oTU,RAM Size,16MB,32MB,64MB,128MB;",
+	"P2oTU,RAM Size,16MB,32MB,64MB,128MB;", // Lowercase 'o' maps T/U to status[62:61].
 	"P2-;",
 	"P2o01,Boot 1st,Floppy/Hard Disk,Floppy,Hard Disk,CD-ROM;",
 	"P2o23,Boot 2nd,NONE,Floppy,Hard Disk,CD-ROM;",
@@ -182,6 +183,7 @@ wire  [7:0] core_b;
 wire        core_hs;
 wire        core_vs;
 wire        core_de;
+wire        video_f60;
 // SVGA framebuffer descriptor from vga.v (via system) -> MiSTer HPS framebuffer
 wire [19:0] vga_start_addr;
 wire  [8:0] vga_width;
@@ -368,8 +370,9 @@ wire        ioctl_rd;
 wire [31:0] ioctl_file_ext;
 wire [15:0] sdram_sz;
 wire [1:0] detected_ram_size = |sdram_sz[1:0] ? sdram_sz[1:0] : 2'd1;
-wire [1:0] configured_ram_size = status[30:29] > detected_ram_size
-                               ? detected_ram_size : status[30:29];
+wire [1:0] selected_ram_size = status[62:61];
+wire [1:0] configured_ram_size = selected_ram_size > detected_ram_size
+                               ? detected_ram_size : selected_ram_size;
 wire [64:0] rtc;
 wire [32:0] timestamp;
 wire [7:0]  uart_mode;
@@ -677,6 +680,7 @@ system #(
 	.video_r             (core_r),
 	.video_g             (core_g),
 	.video_b             (core_b),
+	.video_f60           (video_f60),
 	.video_border        (~status[54]),  // OSD "Border" (oM), shown by default
 
 	// SVGA framebuffer descriptor (vga.v) -> MiSTer HPS framebuffer (below)
@@ -992,7 +996,10 @@ reg  [11:0] fb_height;
 reg  [13:0] fb_stride;
 reg   [4:0] fb_fmt;
 reg         fb_off;
+reg         fb_force_60;
+assign video_f60 = ~status[4] | fb_force_60;
 always @(posedge clk_sys) begin
+	fb_force_60 <= fb_en || (fb_width > 12'd760);
 	fb_en       <= ~vga_flags[2] && |vga_flags[1:0];
 	fb_base     <= {4'h3, 6'b111110, vga_start_addr, 2'b00};
 	fb_width    <= (vga_flags[1:0] == 2'd3) ? 12'd640 : vga_flags[2] ? {vga_width, 2'b00} : {vga_width, 3'b000};
@@ -1015,6 +1022,8 @@ assign FB_PAL_ADDR   = vga_pal_a;
 assign FB_PAL_DOUT   = {vga_pal_d[17:12], vga_pal_d[17:16], vga_pal_d[11:6], vga_pal_d[11:10], vga_pal_d[5:0], vga_pal_d[5:4]};
 assign FB_PAL_WR     = vga_pal_we;
 `endif
+`else
+assign video_f60 = ~status[4];
 `endif
 
 assign LED_USER      = pll_locked;

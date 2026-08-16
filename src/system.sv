@@ -135,6 +135,7 @@ module system (
 	output wire [7:0]  video_r,
 	output wire [7:0]  video_g,
 	output wire [7:0]  video_b,
+	input              video_f60,     // force VGA timing to 60 Hz; 0 preserves native refresh
 	input              video_border,	// show VGA overscan border (OSD)
 
 	// SVGA framebuffer descriptor (from vga.v) -> MiSTer HPS framebuffer path
@@ -1211,7 +1212,7 @@ vga vga_inst
 	.vga_r             (video_r),
 	.vga_g             (video_g),
 	.vga_b             (video_b),
-	.vga_f60           (1'b1),
+	.vga_f60           (video_f60),
 	.vga_memmode       (vga_memmode),
 	.vga_pal_a         (video_pal_a),
 	.vga_pal_d         (video_pal_d),

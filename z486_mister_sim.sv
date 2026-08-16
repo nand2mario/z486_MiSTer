@@ -421,7 +421,7 @@ system #(
 	.dbg_cpu_din_z       (dbg_cpu_din_z),
 
 	.bootcfg             ({4'd0, status[2:1]}),
-	.ram_size            (status[30:29]),
+	.ram_size            (status[62:61]),
 	.sdram_size          (2'd3),
 	.uma_ram             (1'b0),
 	.cpu_speed_osd      (cpu_speed_osd),
@@ -434,6 +434,7 @@ system #(
 	.video_r             (video_r_w),
 	.video_g             (video_g_w),
 	.video_b             (video_b_w),
+	.video_f60           (~status[4]),
 	.video_border        (~status[54]),
 	.video_start_addr    (fb_start_addr),
 	.video_width         (fb_width),

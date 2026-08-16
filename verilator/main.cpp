@@ -909,7 +909,7 @@ static bool dump_screen_png(const fs::path& path, int width, int height) {
 }
 
 static void usage() {
-	cout << "Usage: Vz486_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
+	cout << "Usage: Vz486_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--variable-vsync] [--vga-border|--no-vga-border] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--record] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
 }
 
 int main(int argc, char** argv) {
@@ -942,6 +942,7 @@ int main(int argc, char** argv) {
 	unsigned cpu_speed_status = 0;
 	bool opl3_mode = true;
 	bool opl_mode_explicit = false;
+	bool variable_vsync = false;
 	bool vga_border = true;
 	bool vga_border_explicit = false;
 	unsigned control_port = 0;
@@ -1014,6 +1015,8 @@ int main(int argc, char** argv) {
 		} else if (arg == "--opl3") {
 			opl3_mode = true;
 			opl_mode_explicit = true;
+		} else if (arg == "--variable-vsync") {
+			variable_vsync = true;
 		} else if (arg == "--vga-border") {
 			vga_border = true;
 			vga_border_explicit = true;
@@ -1326,7 +1329,8 @@ int main(int argc, char** argv) {
 	                         (ram_mb == 32) ? 1 :
 	                         (ram_mb == 64) ? 2 : 3;
 	tb.status = (uint64_t{cpu_speed_status} << 8) |
-	            (uint64_t{ram_size_code} << 29) |
+	            (uint64_t{ram_size_code} << 61) |
+	            (uint64_t{variable_vsync} << 4) |
 	            (uint64_t{!vga_border} << 54) |
 	            (uint64_t{!opl3_mode} << 57);
 	tb.ioctl_download = 0;
@@ -1842,11 +1846,13 @@ int main(int argc, char** argv) {
 	// Checkpoints preserve MiSTer status. Override only hardware selections that
 	// were explicitly supplied for this replay.
 	if (ram_mb_explicit)
-		tb.status = (tb.status & ~(uint64_t{3} << 29)) |
-		            (uint64_t{ram_size_code} << 29);
+		tb.status = (tb.status & ~(uint64_t{3} << 61)) |
+		            (uint64_t{ram_size_code} << 61);
 	if (opl_mode_explicit)
 		tb.status = (tb.status & ~(uint64_t{1} << 57)) |
 		            (uint64_t{!opl3_mode} << 57);
+	if (variable_vsync)
+		tb.status |= uint64_t{1} << 4;
 	if (vga_border_explicit)
 		tb.status = (tb.status & ~(uint64_t{1} << 54)) |
 		            (uint64_t{!vga_border} << 54);
