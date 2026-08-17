@@ -29,4 +29,4 @@ the files as follows:
   images (`.vhd`) in `/media/fat/games/Z486`
 
 Development and compatibility discussion is available in the
-[MiSTer FPGA forum thread](https://misterfpga.org/viewtopic.php?t=10400).
+[MiSTer FPGA forum thread](https://misterfpga.org/viewtopic.php?t=111989).
