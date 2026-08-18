@@ -124,6 +124,8 @@ localparam CONF_STR = {
 	"P1-;",
 	"P1OMN,Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1O4,VSync,60Hz,Variable;",
+	"P1O5,16/24bit mode,BGR,RGB;",
+	"P1O6,16bit format,1555,565;",
 	"P1oM,Border,Yes,No;",
 	"P1-;",
 	"P1oP,FM mode,OPL3,OPL2 compatibility;",
@@ -1006,7 +1008,7 @@ always @(posedge clk_sys) begin
 	fb_stride   <= {vga_stride, 3'b000};
 	fb_height   <= vga_flags[3] ? {2'b0, vga_height[10:1]} : {1'b0, vga_height};   // undo vertical doublescan
 	fb_fmt[2:0] <= (vga_flags[1:0] == 2'd3) ? 3'b101 : (vga_flags[1:0] == 2'd2) ? 3'b100 : 3'b011; // 011=8bpp 100=16bpp 101=24bpp
-	fb_fmt[4:3] <= 2'b00;   // [4]=RGB (BGR only applies to 16/24/32bpp; no OSD toggle yet)
+	fb_fmt[4:3] <= {~status[5], ~status[6]}; // Match ao486's BGR/RGB and 1555/565 controls.
 	fb_off      <= vga_off;
 end
 assign FB_EN          = fb_en;
