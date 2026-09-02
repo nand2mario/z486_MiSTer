@@ -147,7 +147,7 @@ localparam CONF_STR = {
 	"P2o6,IDE 1-0 CD Hot-Swap,Yes,No;",
 	"P2o7,IDE 1-1 CD Hot-Swap,No,Yes;",
     "P2-;",
-    "P2OCD,Joystick Type,2 Buttons,4 Buttons,Gravis Pro,None;",
+    "P2OCE,Joystick Type,2 Buttons,4 Buttons,Gravis Pro,None,CH Flightst., Thrustmaster;",
     "P2oFG,Joystick Mode,2 Joysticks,2 Sticks,2 Wheels,4-axes Wheel;",
     "P2oQR,Joystick Axes,Timed,Count 8+141,Count 0+256,Count 6+256;",
     "P2oH,Joystick 1,Enabled,Disabled;",
@@ -324,7 +324,7 @@ wire [13:0] joystick_dig_1;
 wire [13:0] joystick_dig_2;
 wire [15:0] joystick_ana_1;
 wire [15:0] joystick_ana_2;
-wire [1:0]  joystick_mode;
+wire [2:0]  joystick_mode;
 wire [1:0]  joystick_timed;
 
 reg  [7:0]  ja_1x;
@@ -383,7 +383,7 @@ assign joystick_dig_1  = joystick_0[13:0] & dig_mask;
 assign joystick_dig_2  = status[47] ? 14'd0 : (joystick_1[13:0] & dig_mask);
 assign joystick_ana_1  = {ja_1y, ja_1x};
 assign joystick_ana_2  = {ja_2y, ja_2x};
-assign joystick_mode   = status[13:12];
+assign joystick_mode   = status[14:12];
 assign joystick_timed  = status[59:58];
 
 wire        forced_scandoubler;
