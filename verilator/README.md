@@ -56,6 +56,26 @@ Useful options include:
 
 Run with `--help` for the full list.
 
+## DDR3 waitrequest injection
+
+`DDRAM_BUSY` is the HPS f2sdram bridge's Avalon-MM `waitrequest`; on hardware it
+rises for DDR3 refresh and for other bridge masters, but the simulator normally
+keeps it low. Two options inject it so that masters that must hold a request
+until it is accepted can be exercised:
+
+```sh
+./obj_dir/Vz486_mister_sim --headless --end 8000000 --ddr-busy 7,3
+./obj_dir/Vz486_mister_sim --headless --end 8000000 --ddr-busy-rand 30[,SEED]
+```
+
+`--ddr-busy P[,L]` asserts busy for `L` cycles (default 1) out of every `P`;
+`--ddr-busy-rand N[,SEED]` asserts it on a pseudo-random `N`% of cycles. Prefer the
+random mode: a request FSM with a fixed loop length synchronises to a periodic
+pattern and then never issues into a busy cycle. The DDR model samples `rd`,
+`we`, `busy` and the address/data at the rising edge as a real slave does, and
+reports `DDR: dropped read request` if a read presented into a busy cycle is
+deasserted before it is accepted. Injection state is not saved in checkpoints.
+
 ## Live control socket
 
 Start the simulator with a localhost TCP control socket:
