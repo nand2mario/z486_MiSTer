@@ -2048,7 +2048,14 @@ always @(posedge clk_sys) begin
 	vga_flags      <= { vertical_doublescan,                        // vga_flags[3]   = vertical doublescan
 	                    attrib_pelclock_div2,                       // vga_flags[2]   = 256-color
 	                                                                // vga_flags[1:0] = color bit depth
-	                    ~attrib_reg16[7] ?                 2'b00 :  // NOT Bypass internal palette (disables fb_en)
+	                    // A framebuffer mode is always a graphics mode. ATC 0x16 bit 7
+	                    // is an ET4000 extended register that standard BIOS mode sets
+	                    // never clear, and this module is only reset by the SYSTEM
+	                    // reset, not by a CPU-only warm reset. Without the
+	                    // attrib_graphic_mode term fb_en survives a warm reboot into
+	                    // text mode and BIOS text output is remapped into DDR3 while
+	                    // the scaler keeps showing the stale graphics frame.
+	                    (~attrib_reg16[7] || ~attrib_graphic_mode) ? 2'b00 : // NOT Bypass internal palette or NOT graphics mode (disables fb_en)
 	                    (attrib_reg16[5:4] == 2) ?         2'b10 :  // 16bpp
 	                    (crtc_reg37[7] && crtc_reg37[5]) ? 2'b11 :  // 24bpp
 	                                                       2'b01 }; //  8bpp
