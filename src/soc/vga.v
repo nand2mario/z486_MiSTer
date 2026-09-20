@@ -206,8 +206,8 @@ module vga #(
 	output reg          vga_pal_we,
 
 	output reg [19:0]   vga_start_addr,
-	output reg  [5:0]   vga_wr_seg,
-	output reg  [5:0]   vga_rd_seg,
+	output      [5:0]   vga_wr_seg,
+	output      [5:0]   vga_rd_seg,
 	output reg  [8:0]   vga_width,
 	output reg  [8:0]   vga_stride,
 	output reg [10:0]   vga_height,
@@ -2038,9 +2038,13 @@ assign vga_ce = render_ce_reg & (
 
 //------------------------------------------------------------------------------
 
+// The CPU aperture bank follows the 3CD/3CB bank registers with no extra clock
+// of latency; a registered copy could only be stale for an access issued in the
+// cycle right after a bank write.
+assign vga_rd_seg = seg_rd;
+assign vga_wr_seg = seg_wr;
+
 always @(posedge clk_sys) begin
-	vga_rd_seg     <= seg_rd;
-	vga_wr_seg     <= seg_wr;
 	vga_start_addr <= crtc_address_start;
 	// The HPS framebuffer contains active pixels only. Including overscan here
 	// makes its visible width exceed the scanline stride and wraps into the next row.
