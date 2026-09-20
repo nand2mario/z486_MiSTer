@@ -56,13 +56,73 @@ module tb_main_memory_svga;
 
     main_memory dut (.*);
 
+    // ------------------------------------------------------------- DDR3 model
+    // Avalon-MM slave semantics: a read is accepted only in a cycle where the
+    // master holds fb_ddram_rd AND the slave reports !busy in that same cycle.
+    // A master that samples !busy and pulses rd one cycle later loses the
+    // request - which is the defect the handshake cases below exist to catch.
+    integer fb_accepts = 0;
+
     always @(posedge clk) begin
         fb_ddram_dout_ready <= 0;
-        if (fb_ddram_rd) begin
+        if (fb_ddram_rd && !fb_ddram_busy) begin
+            fb_accepts <= fb_accepts + 1;
             fb_ddram_dout <= 64'h8877_6655_4433_2211;
             fb_ddram_dout_ready <= 1;
         end
     end
+
+    // ---------------------------------------------------------------- helpers
+
+    // Present exactly one cycle in which the DDR3 reports !busy, `hold` cycles
+    // after the request was accepted, then take busy away again and see whether
+    // the read survived.
+    task automatic fb_read_under_busy(input integer hold, input [31:0] addr);
+        integer acc_start, i;
+        logic   got;
+        logic [31:0] data;
+        begin
+            acc_start = fb_accepts;
+            got = 0;
+            data = 32'hx;
+            @(negedge clk);
+            fb_ddram_busy = 1;
+            cpu_addr = addr;
+            cpu_be = 4'hF;
+            cpu_write = 0;
+            cpu_line_read = 0;
+            cpu_burstcount = 1;
+            cpu_valid = 1;
+            do begin
+                @(posedge clk);
+                #1;
+            end while (!cpu_ready);
+            @(negedge clk);
+            cpu_valid = 0;
+            for (i = 0; i < hold; i = i + 1) @(negedge clk);
+            fb_ddram_busy = 0;      // the single !busy cycle
+            @(negedge clk);
+            fb_ddram_busy = 1;      // gone again
+            for (i = 0; i < 40; i = i + 1) begin
+                @(posedge clk);
+                #1;
+                if (cpu_resp_valid && !got) begin
+                    got = 1;
+                    data = cpu_dout;
+                end
+            end
+            @(negedge clk);
+            fb_ddram_busy = 0;
+            if (fb_accepts != acc_start + 1)
+                $fatal(1, "FB_READ hold=%0d: expected exactly 1 accepted DDR3 read, got %0d (Avalon read not held until !busy)",
+                       hold, fb_accepts - acc_start);
+            if (!got)
+                $fatal(1, "FB_READ hold=%0d: no cpu_resp_valid - the read was dropped and the FSM is wedged",
+                       hold);
+            if (data !== 32'h4433_2211)
+                $fatal(1, "FB_READ hold=%0d: wrong data %08x", hold, data);
+        end
+    endtask
 
     initial begin
         repeat (3) @(negedge clk);
@@ -206,6 +266,35 @@ module tb_main_memory_svga;
         @(negedge clk);
         cpu_valid = 0;
         $display("PASS: configured RAM size is enforced as a physical decode limit");
+
+        // ------------------------------------------------------------------
+        // F1 - the DDR3 read must be HELD until the slave is not busy in the
+        // same cycle. DDRAM_BUSY is the HPS f2sdram bridge's waitrequest and
+        // goes high for refresh and for the scaler's own framebuffer fetches.
+        // A dropped read leaves FB_READ_WAIT waiting forever, and because
+        // mem_valid is gated on !vga_busy that wedges every later CPU access:
+        // the 8-bpp "desktop painted then frozen" failure mode.
+        // ------------------------------------------------------------------
+        @(negedge clk);
+        ram_size = 0;
+        vga_fb_en = 1;
+        vga_chain4 = 1;
+        vga_rd_seg = 6'h12;
+        vga_read_plane = 0;
+        cpu_din = 0;
+        fb_read_under_busy(1, 32'h000A_0000);
+        fb_read_under_busy(2, 32'h000A_0000);
+        fb_read_under_busy(7, 32'h000A_0000);
+        $display("PASS: FB_READ holds the DDR3 read until it is accepted (busy 1/2/7 cycles)");
+
         $finish;
+    end
+
+    // The defects under test all manifest as a stalled FSM; fail, do not hang.
+    integer cycles = 0;
+    always @(posedge clk) begin
+        cycles <= cycles + 1;
+        if (cycles > 6000)
+            $fatal(1, "watchdog: no progress in 6000 cycles");
     end
 endmodule

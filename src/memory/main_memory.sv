@@ -55,7 +55,7 @@ module main_memory (
     output reg [63:0] fb_ddram_din,
     output reg  [7:0] fb_ddram_be,
     output            fb_ddram_we,
-    output reg        fb_ddram_rd,
+    output            fb_ddram_rd,
     input      [63:0] fb_ddram_dout,
     input             fb_ddram_dout_ready,
     output     [7:0]  fb_ddram_burstcnt,
@@ -106,6 +106,13 @@ localparam UNMAPPED_READ = 6;
 
 // DDR3 framebuffer write: assert WE while in FB_WRITE; accepted when ~busy.
 assign fb_ddram_we       = (state == FB_WRITE);
+// Avalon-MM requires a master to HOLD read asserted until the slave reports
+// !waitrequest in the SAME cycle. Sampling !busy and pulsing rd one cycle
+// later silently loses the request whenever DDR3 goes busy in between (refresh,
+// the HPS scaler fetching this very framebuffer), and FB_READ_WAIT then waits
+// forever - which stalls every later CPU access because mem_valid is gated on
+// !vga_busy. Drive rd combinationally from the state, exactly like fb_ddram_we.
+assign fb_ddram_rd       = (state == FB_READ);
 assign fb_ddram_burstcnt = 8'd1;
 // SVGA framebuffer base in DDR3 = byte 0x3F80_0000 = {4'h3,6'b111110,22'h0},
 // matching FB_BASE = {4'h3,6'b111110,vga_start_addr,2'b00} in z486_mister.sv.
@@ -138,7 +145,6 @@ always @(posedge clk) begin
         fb_ddram_addr <= 0;
         fb_ddram_din <= 0;
         fb_ddram_be <= 0;
-        fb_ddram_rd <= 0;
         fb_read_high_dword <= 0;
     end else begin
         vga_read <= 0;
@@ -146,7 +152,6 @@ always @(posedge clk) begin
         vga_dout_ready <= 0;
         vga_wr_done <= 0;
         vga_accepted <= 0;
-        fb_ddram_rd <= 0;
         case (state)
             IDLE: begin
                 // set up vga access to point to 1st enabled byte
@@ -246,10 +251,9 @@ always @(posedge clk) begin
                     vga_busy <= 0;
                 end
             FB_READ:
-                if (!fb_ddram_busy) begin   // issue the read (1-cycle pulse)
-                    fb_ddram_rd <= 1;
-                    state <= FB_READ_WAIT;
-                end
+                // fb_ddram_rd is held for the whole of this state; DDR3 has
+                // accepted the read in the first cycle it reports !busy.
+                if (!fb_ddram_busy) state <= FB_READ_WAIT;
             FB_READ_WAIT:
                 if (fb_ddram_dout_ready) begin
                     if (!vga_chain4) begin
