@@ -333,8 +333,10 @@ always @(posedge clk_sys) if(display_mode_control_io_write && et4k_window_enable
 
 //------------------------------------------------------------------------------ sequencer io
 
-reg [2:0] seq_io_index;
-always @(posedge clk_sys) if(~rst_n) seq_io_index <= 3'd0; else if(io_c_write && io_address == 4'h4) seq_io_index <= io_writedata[2:0];
+// The ET4000 sequencer index is 5 bits. With only 3 bits TS 0x08 aliases onto
+// TS 0x00 (the asynchronous/synchronous RESET register) and TS 0x0E onto TS 0x06.
+reg [4:0] seq_io_index;
+always @(posedge clk_sys) if(~rst_n) seq_io_index <= 5'd0; else if(io_c_write && io_address == 4'h4) seq_io_index <= io_writedata[4:0];
 
 wire seq_io_write = io_c_write && io_address == 4'h5;
 
@@ -364,30 +366,30 @@ reg seq_not_impl_shift_load_4;
 
 //------------------------------------------------------------------------------ sequencer data write
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd0) seq_async_reset_n <= io_writedata[0];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd0) seq_sync_reset_n  <= io_writedata[1];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd0) seq_async_reset_n <= io_writedata[0];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd0) seq_sync_reset_n  <= io_writedata[1];
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd1) seq_8dot_char        <= io_writedata[0];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd1) seq_dotclock_divided <= io_writedata[3];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd1) seq_screen_disable   <= io_writedata[5];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd1) seq_8dot_char        <= io_writedata[0];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd1) seq_dotclock_divided <= io_writedata[3];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd1) seq_screen_disable   <= io_writedata[5];
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd2) seq_map_write_enable <= io_writedata[3:0];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd2) seq_map_write_enable <= io_writedata[3:0];
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd3) seq_char_map_a <= { io_writedata[4], io_writedata[1:0] };
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd3) seq_char_map_b <= { io_writedata[5], io_writedata[3:2] };
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd3) seq_char_map_a <= { io_writedata[4], io_writedata[1:0] };
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd3) seq_char_map_b <= { io_writedata[5], io_writedata[3:2] };
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd4) seq_access_256kb             <= io_writedata[1];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd4) seq_access_odd_even_disabled <= io_writedata[2];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd4) seq_access_chain4            <= io_writedata[3];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd4) seq_access_256kb             <= io_writedata[1];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd4) seq_access_odd_even_disabled <= io_writedata[2];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd4) seq_access_chain4            <= io_writedata[3];
 
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd1) seq_not_impl_shift_load_2 <= io_writedata[2];
-always @(posedge clk_sys) if(seq_io_write && seq_io_index == 3'd1) seq_not_impl_shift_load_4 <= io_writedata[4];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd1) seq_not_impl_shift_load_2 <= io_writedata[2];
+always @(posedge clk_sys) if(seq_io_write && seq_io_index == 5'd1) seq_not_impl_shift_load_4 <= io_writedata[4];
 
 //------------------------------------------------------------------------------ sequencer data write (extended)
 
 reg [7:0] seq_reg6, seq_reg7;
-always @(posedge clk_sys) if(~rst_n) seq_reg6 <= 8'd0; else if(seq_io_write && seq_io_index == 3'd6) seq_reg6 <= io_writedata[7:0];
-always @(posedge clk_sys) if(~rst_n) seq_reg7 <= 8'd0; else if(seq_io_write && seq_io_index == 3'd7) seq_reg7 <= io_writedata[7:0];
+always @(posedge clk_sys) if(~rst_n) seq_reg6 <= 8'd0; else if(seq_io_write && seq_io_index == 5'd6) seq_reg6 <= io_writedata[7:0];
+always @(posedge clk_sys) if(~rst_n) seq_reg7 <= 8'd0; else if(seq_io_write && seq_io_index == 5'd7) seq_reg7 <= io_writedata[7:0];
 
 //------------------------------------------------------------------------------ sequencer data read
 
@@ -984,7 +986,7 @@ wire [7:0] host_io_read_wire =
 	((io_b_read_valid || io_d_read_valid) && io_address == 4'h8) ? { dmc_bit_7_key, herc_2nd_page_enabled, dmc_bit_5_key, 5'b00000} : // display mode control
 	(io_c_read_valid && io_address == 4'h0)                      ? { 2'b0, attrib_pas, attrib_io_index } : //attrib read index (regardless the flip-flop state)
 	(io_c_read_valid && io_address == 4'h1)                      ? host_io_read_attrib : //attrib read data
-	(io_c_read_valid && io_address == 4'h4)                      ? { 5'd0, seq_io_index } : //seq index
+	(io_c_read_valid && io_address == 4'h4)                      ? { 3'd0, seq_io_index } : //seq index
 	(io_c_read_valid && io_address == 4'h5)                      ? host_io_read_seq : //seq data
 	(io_c_read_valid && io_address == 4'h6)                      ? dac_mask : //pel mask
 	(io_c_read_valid && io_address == 4'h7)                      ? { 6'd0, dac_is_read? 2'b11 : 2'b00 } : //dac state
