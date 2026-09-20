@@ -31,7 +31,7 @@ module tb_main_memory_svga;
     logic mem_valid;
     logic mem_write;
     logic [16:0] vga_address;
-    logic [7:0] vga_readdata = 0;
+    wire  [7:0] vga_readdata;
     logic [7:0] vga_writedata;
     logic [2:0] vga_memmode = 3'b100;
     logic vga_read;
@@ -62,15 +62,28 @@ module tb_main_memory_svga;
     // A master that samples !busy and pulses rd one cycle later loses the
     // request - which is the defect the handshake cases below exist to catch.
     integer fb_accepts = 0;
+    logic   ddr_addr_pattern = 0;   // 1 => returned data identifies its address
+    wire [31:0] ddr_dwidx = {fb_ddram_addr, 1'b0};  // dword index of the low half
 
     always @(posedge clk) begin
         fb_ddram_dout_ready <= 0;
         if (fb_ddram_rd && !fb_ddram_busy) begin
             fb_accepts <= fb_accepts + 1;
-            fb_ddram_dout <= 64'h8877_6655_4433_2211;
+            fb_ddram_dout <= ddr_addr_pattern ? {ddr_dwidx + 32'd1, ddr_dwidx}
+                                              : 64'h8877_6655_4433_2211;
             fb_ddram_dout_ready <= 1;
         end
     end
+
+    // -------------------------------------------------- legacy plane RAM model
+    // vga.v presents the byte one clock after vga_address/vga_read are driven,
+    // which is the cycle in which main_memory shifts it in.
+    assign vga_readdata = vga_address[7:0] ^ 8'h5A;
+
+    function automatic [31:0] plane_dword(input integer dw);
+        plane_dword = {8'((dw*4+3) ^ 8'h5A), 8'((dw*4+2) ^ 8'h5A),
+                       8'((dw*4+1) ^ 8'h5A), 8'((dw*4+0) ^ 8'h5A)};
+    endfunction
 
     // ---------------------------------------------------------------- helpers
 
@@ -87,6 +100,7 @@ module tb_main_memory_svga;
             data = 32'hx;
             @(negedge clk);
             fb_ddram_busy = 1;
+            ddr_addr_pattern = 0;
             cpu_addr = addr;
             cpu_be = 4'hF;
             cpu_write = 0;
@@ -286,6 +300,175 @@ module tb_main_memory_svga;
         fb_read_under_busy(2, 32'h000A_0000);
         fb_read_under_busy(7, 32'h000A_0000);
         $display("PASS: FB_READ holds the DDR3 read until it is accepted (busy 1/2/7 cycles)");
+
+        // ------------------------------------------------------------------
+        // F2 - a cache-line fill out of the aperture owes FOUR ordered dword
+        // responses. l1_icache.sv issues burstcount=4 at a 16-byte-aligned
+        // address and completes on four mem_resp_valid pulses (the 128-bit
+        // line route is tied off on this board). Both aperture read paths used
+        // to answer with exactly one response, deadlocking the fetch unit and
+        // therefore the whole memory fabric.
+        //
+        // The aperture state (bank, chain-4) is perturbed after the first beat:
+        // the remaining beats must still use what was captured at acceptance.
+        // ------------------------------------------------------------------
+        begin : fb_line_fill
+            integer beat;
+            logic [31:0] expect_dw;
+            @(negedge clk);
+            ddr_addr_pattern = 1;
+            fb_ddram_busy = 0;
+            vga_fb_en = 1;
+            vga_chain4 = 1;
+            vga_rd_seg = 6'h12;
+            cpu_addr = 32'h000A_0000;
+            cpu_be = 4'hF;
+            cpu_write = 0;
+            cpu_burstcount = 4;
+            cpu_line_read = 1;
+            cpu_valid = 1;
+            do begin
+                @(posedge clk);
+                #1;
+            end while (!cpu_ready);
+            @(negedge clk);
+            cpu_valid = 0;
+            cpu_line_read = 0;
+            cpu_burstcount = 1;
+            // 0x3F80_0000 | (0x12 << 16) = 0x3F92_0000 -> dword index 0x0FE4_8000
+            for (beat = 0; beat < 4; beat = beat + 1) begin
+                expect_dw = 32'h0FE4_8000 + beat;
+                // delayed DDR3: make every beat wait, and re-issue under busy
+                fb_ddram_busy = 1;
+                repeat (2 + beat) @(negedge clk);
+                fb_ddram_busy = 0;
+                @(negedge clk);
+                fb_ddram_busy = 1;
+                begin : wait_beat
+                    integer i;
+                    logic got;
+                    got = 0;
+                    for (i = 0; i < 40 && !got; i = i + 1) begin
+                        @(posedge clk);
+                        #1;
+                        if (cpu_resp_valid) begin
+                            got = 1;
+                            if (cpu_dout !== expect_dw)
+                                $fatal(1, "aperture line fill beat %0d: expected %08x got %08x",
+                                       beat, expect_dw, cpu_dout);
+                        end
+                    end
+                    if (!got)
+                        $fatal(1, "aperture line fill stalled after %0d of 4 dword responses",
+                               beat);
+                end
+                if (beat == 0) begin
+                    // Mid-burst bank / plane / address change. A correct
+                    // implementation captured them at request acceptance.
+                    vga_rd_seg = 6'h3F;
+                    vga_read_plane = 3;
+                    cpu_addr = 32'h000B_8000;
+                end
+            end
+            @(negedge clk);
+            fb_ddram_busy = 0;
+            // No fifth response.
+            repeat (10) begin
+                @(posedge clk);
+                #1;
+                if (cpu_resp_valid)
+                    $fatal(1, "aperture line fill produced a fifth response");
+            end
+            if (fb_accepts < 4)
+                $fatal(1, "aperture line fill issued fewer than 4 DDR3 reads");
+            $display("PASS: FB_READ line fill returns 4 ordered dwords, bank captured at acceptance");
+        end
+
+        // Same contract on the legacy (fb_en=0) plane-RAM read path.
+        begin : vga_line_fill
+            integer beat, i;
+            logic got;
+            logic [31:0] expect_dw;
+            @(negedge clk);
+            vga_fb_en = 0;
+            vga_chain4 = 1;
+            vga_memmode = 3'b100;
+            cpu_addr = 32'h000A_0000;
+            cpu_be = 4'hF;
+            cpu_write = 0;
+            cpu_burstcount = 4;
+            cpu_line_read = 1;
+            cpu_valid = 1;
+            do begin
+                @(posedge clk);
+                #1;
+            end while (!cpu_ready);
+            @(negedge clk);
+            cpu_valid = 0;
+            cpu_line_read = 0;
+            cpu_burstcount = 1;
+            cpu_addr = 32'h000B_0000;   // must not affect the accepted request
+            for (beat = 0; beat < 4; beat = beat + 1) begin
+                expect_dw = plane_dword(beat);
+                got = 0;
+                for (i = 0; i < 60 && !got; i = i + 1) begin
+                    @(posedge clk);
+                    #1;
+                    if (cpu_resp_valid) begin
+                        got = 1;
+                        if (cpu_dout !== expect_dw)
+                            $fatal(1, "legacy VGA line fill beat %0d: expected %08x got %08x",
+                                   beat, expect_dw, cpu_dout);
+                    end
+                end
+                if (!got)
+                    $fatal(1, "legacy VGA line fill stalled after %0d of 4 dword responses",
+                           beat);
+            end
+            repeat (20) begin
+                @(posedge clk);
+                #1;
+                if (cpu_resp_valid)
+                    $fatal(1, "legacy VGA line fill produced a fifth response");
+            end
+            $display("PASS: legacy VGA_READ line fill returns 4 ordered dwords");
+        end
+
+        // A single-dword aperture read must still produce exactly one response.
+        begin : single_dword_after_burst
+            integer i;
+            integer resp;
+            @(negedge clk);
+            vga_fb_en = 1;
+            ddr_addr_pattern = 0;
+            fb_ddram_busy = 0;
+            vga_chain4 = 1;
+            vga_rd_seg = 6'h12;
+            cpu_addr = 32'h000A_0000;
+            cpu_be = 4'hF;
+            cpu_burstcount = 1;
+            cpu_line_read = 0;
+            cpu_valid = 1;
+            do begin
+                @(posedge clk);
+                #1;
+            end while (!cpu_ready);
+            @(negedge clk);
+            cpu_valid = 0;
+            resp = 0;
+            for (i = 0; i < 30; i = i + 1) begin
+                @(posedge clk);
+                #1;
+                if (cpu_resp_valid) begin
+                    resp = resp + 1;
+                    if (cpu_dout !== 32'h4433_2211)
+                        $fatal(1, "single aperture dword read data %08x", cpu_dout);
+                end
+            end
+            if (resp !== 1)
+                $fatal(1, "single aperture dword read produced %0d responses", resp);
+            $display("PASS: single-dword aperture read still produces exactly one response");
+        end
 
         $finish;
     end

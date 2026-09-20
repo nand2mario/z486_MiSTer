@@ -118,11 +118,18 @@ assign fb_ddram_burstcnt = 8'd1;
 // matching FB_BASE = {4'h3,6'b111110,vga_start_addr,2'b00} in z486_mister.sv.
 // Chain-4 exposes packed bytes. In planar mode each aperture byte addresses a
 // four-pixel group; the request byte enable selects the aligned dword lane.
-function automatic [31:0] framebuffer_byte_address(input [5:0] bank);
+// All aperture state is passed in explicitly so a multi-beat line read keeps
+// using the values captured when the request was accepted: a bank register
+// write (0x3CD/0x3CB) or a chain-4 change part way through a burst must not
+// move the remaining beats.
+function automatic [31:0] framebuffer_byte_address(input [5:0] bank,
+                                                   input [31:0] addr,
+                                                   input  [3:0] be,
+                                                   input        chain4);
     framebuffer_byte_address = 32'h3F80_0000 |
-        (vga_chain4 ? {10'b0, bank, cpu_addr[15:0]} :
-         {8'b0, bank, cpu_addr[15:2],
-          cpu_be[0] ? 2'd0 : cpu_be[1] ? 2'd1 : cpu_be[2] ? 2'd2 : 2'd3, 2'b00});
+        (chain4 ? {10'b0, bank, addr[15:0]} :
+         {8'b0, bank, addr[15:2],
+          be[0] ? 2'd0 : be[1] ? 2'd1 : be[2] ? 2'd2 : 2'd3, 2'b00});
 endfunction
 
 reg   [1:0] vga_mask;
@@ -131,6 +138,33 @@ reg   [3:0] vga_be;
 reg   [2:0] vga_bcnt;
 reg   [31:0] vga_data;
 reg   [1:0] vga_bank;
+
+// ---------------------------------------------------------------------------
+// Cache-line (4 dword) reads out of the VGA aperture.
+// l1_icache.sv issues a 16-byte-aligned burstcount=4 line fill and completes on
+// either one mem_line_resp_valid or exactly four mem_resp_valid pulses. On this
+// board ext_mem0_line_resp_valid is tied to 0 (z486_mister.sv), so the only
+// route that can ever complete is four dword responses. Both aperture read
+// paths used to return exactly one response and ignore cpu_burstcount, so any
+// prefetch line touching 0xA0000-0xBFFFF wedged the whole fabric forever
+// (memory.sv gates D-side/device requests on !icache_read_pending, and nothing
+// in the fetch path has a timeout).
+// ---------------------------------------------------------------------------
+reg   [2:0] vga_beats;      // dword responses still owed for this request
+reg  [31:0] fb_req_addr;    // CPU byte address captured at acceptance
+reg   [3:0] fb_req_be;
+reg         fb_req_chain4;
+reg   [5:0] fb_req_seg;
+reg   [1:0] fb_req_plane;
+wire [31:0] fb_next_addr = fb_req_addr + 32'd4;
+
+// Beats requested by this access, clamped to the 4-dword cache line the
+// I-cache/D-cache can ask for. burstcount 0 is treated as 1 by the SDRAM path.
+function automatic [2:0] requested_beats(input [7:0] burstcount, input line);
+    requested_beats = (line || burstcount > 8'd1) ?
+                      ((burstcount == 0 || burstcount > 8'd4) ? 3'd4 : burstcount[2:0]) :
+                      3'd1;
+endfunction
 
 // = 0xA0000-0xBFFFF (VGA: exact region depends on VGA_MODE)
 wire vga_rgn = (cpu_addr[31:17] == 'h5) && ((cpu_addr[16:15] & vga_mask) == vga_cmp);
@@ -146,6 +180,12 @@ always @(posedge clk) begin
         fb_ddram_din <= 0;
         fb_ddram_be <= 0;
         fb_read_high_dword <= 0;
+        vga_beats <= 3'd1;
+        fb_req_addr <= 0;
+        fb_req_be <= 0;
+        fb_req_chain4 <= 0;
+        fb_req_seg <= 0;
+        fb_req_plane <= 0;
     end else begin
         vga_read <= 0;
         vga_write <= 0;
@@ -154,7 +194,10 @@ always @(posedge clk) begin
         vga_accepted <= 0;
         case (state)
             IDLE: begin
-                // set up vga access to point to 1st enabled byte
+                // set up vga access to point to 1st enabled byte.
+                // Cache-line fills always arrive with cpu_be = 4'hF
+                // (l1_icache.sv: assign mem_be = 4'hF), so the cpu_be[0] arm
+                // below is the one that a line read takes.
                 if (!vga_fb_en) begin
                     vga_address[16:2] <= cpu_addr[16:2];
                     if (cpu_be[0]) begin
@@ -192,16 +235,20 @@ always @(posedge clk) begin
                     vga_accepted <= 1;
                     vga_busy <= 1;
                     if (!cpu_write) begin
+                        // A cache-line fill owes four ordered dword responses.
+                        vga_beats <= requested_beats(cpu_burstcount, cpu_line_read);
                         if (vga_fb_en) begin
                             // SVGA: read back from the DDR3 framebuffer (banked by vga_rd_seg)
                             state <= FB_READ;
-                            if (vga_chain4) begin
-                                fb_ddram_addr <= framebuffer_byte_address(vga_rd_seg) >> 3;
-                                fb_read_high_dword <= cpu_addr[2];
-                            end else begin
-                                fb_ddram_addr <= framebuffer_byte_address(vga_rd_seg) >> 3;
-                                fb_read_high_dword <= cpu_be[1] | cpu_be[3];
-                            end
+                            fb_req_addr   <= cpu_addr;
+                            fb_req_be     <= cpu_be;
+                            fb_req_chain4 <= vga_chain4;
+                            fb_req_seg    <= vga_rd_seg;
+                            fb_req_plane  <= vga_read_plane;
+                            fb_ddram_addr <= framebuffer_byte_address(vga_rd_seg, cpu_addr,
+                                                                     cpu_be, vga_chain4) >> 3;
+                            fb_read_high_dword <= vga_chain4 ? cpu_addr[2]
+                                                             : (cpu_be[1] | cpu_be[3]);
                         end else begin
                             state <= VGA_READ;
                             vga_read <= 1;
@@ -210,11 +257,13 @@ always @(posedge clk) begin
                         // SVGA: write into the DDR3 linear framebuffer (banked by vga_wr_seg)
                         state <= FB_WRITE;
                         if (vga_chain4) begin
-                            fb_ddram_addr <= framebuffer_byte_address(vga_wr_seg) >> 3;
+                            fb_ddram_addr <= framebuffer_byte_address(vga_wr_seg, cpu_addr,
+                                                                     cpu_be, vga_chain4) >> 3;
                             fb_ddram_be   <= cpu_addr[2] ? {cpu_be, 4'b0}   : {4'b0,  cpu_be};
                             fb_ddram_din  <= cpu_addr[2] ? {cpu_din, 32'b0} : {32'b0, cpu_din};
                         end else begin
-                            fb_ddram_addr <= framebuffer_byte_address(vga_wr_seg) >> 3;
+                            fb_ddram_addr <= framebuffer_byte_address(vga_wr_seg, cpu_addr,
+                                                                     cpu_be, vga_chain4) >> 3;
                             fb_ddram_be   <= (cpu_be[1] | cpu_be[3]) ?
                                              {vga_map_mask, 4'b0} : {4'b0, vga_map_mask};
                             if (vga_write_mode == 2'd1) begin
@@ -256,13 +305,13 @@ always @(posedge clk) begin
                 if (!fb_ddram_busy) state <= FB_READ_WAIT;
             FB_READ_WAIT:
                 if (fb_ddram_dout_ready) begin
-                    if (!vga_chain4) begin
+                    if (!fb_req_chain4) begin
                         // VGA reads load all four plane latches and return the
                         // selected plane. Replication makes the selected byte
                         // available in whichever CPU byte lane requested it.
                         vga_data <= fb_read_high_dword ?
                                       fb_ddram_dout[63:32] : fb_ddram_dout[31:0];
-                        case (vga_read_plane)
+                        case (fb_req_plane)
                             2'd0: vga_dout <= {4{fb_read_high_dword ?
                                                   fb_ddram_dout[39:32] : fb_ddram_dout[7:0]}};
                             2'd1: vga_dout <= {4{fb_read_high_dword ?
@@ -278,8 +327,21 @@ always @(posedge clk) begin
                                       fb_ddram_dout[63:32] : fb_ddram_dout[31:0];
                     end
                     vga_dout_ready <= 1;
-                    state <= IDLE;
-                    vga_busy <= 0;
+                    if (vga_beats <= 3'd1) begin
+                        state <= IDLE;
+                        vga_busy <= 0;
+                    end else begin
+                        // Next dword of the cache line. Ascending order is
+                        // mandatory: l1_icache.sv's fill_count carries no
+                        // address, it simply indexes the beats as they arrive.
+                        vga_beats     <= vga_beats - 3'd1;
+                        fb_req_addr   <= fb_next_addr;
+                        fb_req_be     <= 4'hF;
+                        fb_ddram_addr <= framebuffer_byte_address(fb_req_seg, fb_next_addr,
+                                                                 4'hF, fb_req_chain4) >> 3;
+                        fb_read_high_dword <= fb_req_chain4 ? fb_next_addr[2] : 1'b0;
+                        state <= FB_READ;
+                    end
                 end
             UNMAPPED_READ: begin
                 vga_dout <= 32'hFFFF_FFFF;
@@ -297,12 +359,24 @@ always @(posedge clk) begin
                     vga_read <= vga_be[0];
                     vga_be <= vga_be[3:1];
                     vga_bcnt <= vga_bcnt - 1;
-                    vga_address[1:0] <= vga_address[1:0] + 2'd1;
+                    // Increment the whole aperture address, not just the two
+                    // low bits: a cache-line fill walks 16 consecutive bytes
+                    // and must cross the dword boundaries.
+                    vga_address <= vga_address + 1'd1;
                     vga_dout <= {vga_readdata, vga_dout[31:8]};
                     if (vga_bcnt == 0) begin    // read vga_bcnt times so cpu_dout is shifted correctly
                         vga_dout_ready <= 1;
-                        state <= IDLE;
-                        vga_busy <= 0;
+                        if (vga_beats <= 3'd1) begin
+                            state <= IDLE;
+                            vga_busy <= 0;
+                        end else begin
+                            // Another dword of the same cache line: four more
+                            // consecutive plane bytes from the next address.
+                            vga_beats <= vga_beats - 3'd1;
+                            vga_be    <= 4'h7;
+                            vga_bcnt  <= 3'd3;
+                            vga_read  <= 1'b1;
+                        end
                     end
                 end
             VGA_WRITE: begin
