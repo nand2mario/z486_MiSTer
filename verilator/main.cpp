@@ -90,6 +90,35 @@ static constexpr size_t DDR_SIZE = 16 * 1024 * 1024;
 static std::vector<uint8_t> ddram_mem(DDR_SIZE);
 static bool ddram_resp_valid = false;
 static uint64_t ddram_resp_data = 0;
+// DDR3 waitrequest injection (DDRAM_BUSY is the f2sdram bridge's Avalon
+// waitrequest; on hardware it rises for refresh and other bridge masters).
+//   default            never busy (historical behaviour)
+//   --ddr-busy P[,L]   busy for L cycles out of every P
+//   --ddr-busy-rand N[,SEED]
+//                      busy on a pseudo-random N% of cycles
+// Prefer the random mode for finding masters that pulse a request instead of
+// holding it: a request FSM with a fixed loop length phase-locks to a periodic
+// pattern (it only leaves its request state on a !busy cycle) and then never
+// issues into a busy cycle again. Injection state is not saved in checkpoints.
+static int      ddr_busy_period = 0;
+static int      ddr_busy_len = 1;
+static uint64_t ddr_busy_phase = 0;
+static int      ddr_busy_rand_pct = 0;
+static uint64_t ddr_busy_rand_state = 0x9E3779B97F4A7C15ull;
+static bool     ddr_busy_rand_now = false;
+static uint64_t ddr_dropped_reads = 0;
+// The DDR slave has to act on the request signals that were stable ACROSS the
+// rising edge, i.e. their values before this edge's eval(). Inspecting
+// tb.ddram_rd/tb.ddram_we after eval() sees what the master drives AFTER the
+// edge, one cycle early: harmless while busy is hardwired to 0, but with waitrequest
+// it accepts a request that was only asserted after the edge and misses a
+// request that is held correctly and deasserts at the edge.
+static bool     ddr_pre_rd = false;
+static bool     ddr_pre_we = false;
+static bool     ddr_pre_busy = false;
+static uint32_t ddr_pre_addr = 0;
+static uint32_t ddr_pre_be = 0;
+static uint64_t ddr_pre_din = 0;
 // SVGA framebuffer capture: the RTL writes the linear FB to DDR3 byte 0x3F800000+
 // (= FB_BASE {4'h3,6'b111110,...}), far above the 16MB ddram_mem, so capture it in a
 // dedicated buffer to render the image the HPS scaler would display.
@@ -736,10 +765,35 @@ static void dump_nonempty_rows(const std::string& screen) {
 	}
 }
 
+static bool ddram_busy_now() {
+	if (ddr_busy_rand_pct > 0) return ddr_busy_rand_now;
+	if (ddr_busy_period <= 0) return false;
+	return (ddr_busy_phase % static_cast<uint64_t>(ddr_busy_period)) <
+	       static_cast<uint64_t>(ddr_busy_len);
+}
+
 static void step() {
-	tb.ddram_busy = 0;
+	// One draw per cycle, taken before the rising edge and held for the whole cycle.
+	if (!tb.clk_sys && ddr_busy_rand_pct > 0) {
+		ddr_busy_rand_state ^= ddr_busy_rand_state << 13;
+		ddr_busy_rand_state ^= ddr_busy_rand_state >> 7;
+		ddr_busy_rand_state ^= ddr_busy_rand_state << 17;
+		ddr_busy_rand_now =
+			static_cast<int>((ddr_busy_rand_state >> 33) % 100) < ddr_busy_rand_pct;
+	}
+	tb.ddram_busy = ddram_busy_now() ? 1 : 0;
 	tb.ddram_dout_ready = ddram_resp_valid ? 1 : 0;
 	tb.ddram_dout = ddram_resp_data;
+
+	// Latch the request as the slave sees it across the coming rising edge.
+	if (!tb.clk_sys) {
+		ddr_pre_rd   = tb.ddram_rd != 0;
+		ddr_pre_we   = tb.ddram_we != 0;
+		ddr_pre_busy = tb.ddram_busy != 0;
+		ddr_pre_addr = static_cast<uint32_t>(tb.ddram_addr);
+		ddr_pre_be   = static_cast<uint32_t>(tb.ddram_be);
+		ddr_pre_din  = static_cast<uint64_t>(tb.ddram_din);
+	}
 
 	tb.clk_sys = !tb.clk_sys;
 	posedge = tb.clk_sys;
@@ -903,9 +957,23 @@ static void step() {
 		}
 	}
 	if (posedge) {
-		bool read_accepted = tb.ddram_rd && !tb.ddram_busy;
+		ddr_busy_phase++;
+		bool read_accepted = ddr_pre_rd && !ddr_pre_busy;
+		// Avalon check: a read presented into a busy cycle must still be asserted in
+		// the next cycle. A master that drops it lost a transfer and normally waits
+		// for a response forever; say so instead of hanging silently.
+		{
+			static bool prev_blocked = false;
+			if (prev_blocked && !ddr_pre_rd) {
+				if (++ddr_dropped_reads == 1)
+					fprintf(stderr, "DDR: dropped read request at sim_time %llu "
+					                "(rd deasserted after waitrequest) - Avalon violation\n",
+					        (unsigned long long)sim_time);
+			}
+			prev_blocked = ddr_pre_rd && ddr_pre_busy;
+		}
 		if (read_accepted) {
-			uint64_t byte_addr = static_cast<uint64_t>(tb.ddram_addr) << 3;
+			uint64_t byte_addr = static_cast<uint64_t>(ddr_pre_addr) << 3;
 			uint64_t data = 0;
 			const uint8_t* memory = nullptr;
 			size_t memory_size = 0;
@@ -932,11 +1000,11 @@ static void step() {
 			ddram_resp_valid = false;
 		}
 		// DDR3 write (SVGA framebuffer + any other ddram writes), byte-enabled
-		if (tb.ddram_we && !tb.ddram_busy) {
-			uint64_t byte_addr = static_cast<uint64_t>(tb.ddram_addr) << 3;
+		if (ddr_pre_we && !ddr_pre_busy) {
+			uint64_t byte_addr = static_cast<uint64_t>(ddr_pre_addr) << 3;
 			for (int i = 0; i < 8; i++) {
-				if (!((tb.ddram_be >> i) & 1)) continue;
-				uint8_t b = static_cast<uint8_t>((tb.ddram_din >> (8 * i)) & 0xFF);
+				if (!((ddr_pre_be >> i) & 1)) continue;
+				uint8_t b = static_cast<uint8_t>((ddr_pre_din >> (8 * i)) & 0xFF);
 				uint64_t a = byte_addr + static_cast<uint64_t>(i);
 				if (a >= FB_BASE_BYTE && a < FB_BASE_BYTE + FB_MEM_SIZE) {
 					fb_mem[a - FB_BASE_BYTE] = b;
@@ -1255,6 +1323,31 @@ int main(int argc, char** argv) {
 		} else if (arg == "--trace-file" && i + 1 < argc) {
 			trace_file_name = argv[++i];
 			enable_trace = true;
+		} else if (arg == "--ddr-busy" && i + 1 < argc) {
+			// P or P,L: assert ddram_busy for L cycles (default 1) out of every P.
+			string spec = argv[++i];
+			size_t comma = spec.find(',');
+			ddr_busy_period = std::stoi(comma == string::npos ? spec : spec.substr(0, comma));
+			ddr_busy_len = comma == string::npos ? 1 : std::stoi(spec.substr(comma + 1));
+			if (ddr_busy_period < 0) ddr_busy_period = 0;
+			if (ddr_busy_len < 0) ddr_busy_len = 0;
+			if (ddr_busy_period > 0 && ddr_busy_len >= ddr_busy_period) {
+				cerr << "--ddr-busy L must be smaller than P\n";
+				return 1;
+			}
+		} else if (arg == "--ddr-busy-rand" && i + 1 < argc) {
+			// N or N,SEED: assert ddram_busy on a pseudo-random N% of cycles.
+			string spec = argv[++i];
+			size_t comma = spec.find(',');
+			ddr_busy_rand_pct = std::stoi(comma == string::npos ? spec : spec.substr(0, comma));
+			if (comma != string::npos)
+				ddr_busy_rand_state = 0x9E3779B97F4A7C15ull +
+					static_cast<uint64_t>(std::stoull(spec.substr(comma + 1))) * 0xA0761D6478BD642Full;
+			if (ddr_busy_rand_pct < 0) ddr_busy_rand_pct = 0;
+			if (ddr_busy_rand_pct > 95) {
+				cerr << "--ddr-busy-rand N must be <= 95\n";
+				return 1;
+			}
 		} else if (arg == "--headless") {
 			g_headless = true;
 		} else if (arg == "--end" && i + 1 < argc) {
@@ -2594,7 +2687,8 @@ int main(int argc, char** argv) {
 		cerr << "wrapper boot milestone not reached"
 		     << " first_instruction=" << saw_first_instruction
 		     << " post=" << saw_post
-		     << " video_sync=" << saw_video_sync << "\n";
+		     << " video_sync=" << saw_video_sync
+		     << " ddr_dropped_reads=" << ddr_dropped_reads << "\n";
 		return 2;
 	}
 
