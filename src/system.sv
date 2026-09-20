@@ -1633,9 +1633,16 @@ always @(posedge clk_sys) begin
                 boot_state <= BOOT_DDR_REQ;
             end
 
+            // Avalon-MM: hold the read until the bridge accepts it, i.e. until
+            // !ddram_busy is seen in the same cycle ddram_rd_r is asserted.
+            // Sampling !ddram_busy in one cycle and pulsing ddram_rd_r in the
+            // next loses the request if waitrequest rises in between, and
+            // BOOT_DDR_WAIT then waits forever for ddram_dout_ready, which
+            // leaves cpu_reset_n low: a black screen with no POST code.
             BOOT_DDR_REQ: begin
-                if (!ddram_busy) begin
-                    ddram_rd_r <= 1'b1;
+                ddram_rd_r <= 1'b1;
+                if (ddram_rd_r && !ddram_busy) begin
+                    ddram_rd_r <= 1'b0;
                     debug_boot_stage <= 2;
                     boot_state <= BOOT_DDR_WAIT;
                 end
