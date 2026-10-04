@@ -113,9 +113,6 @@ reg       gravis_clk;
 reg [1:0] gravis_out;
 reg [4:0] gravis_pos;
 
-// Thrustmaster FCS
-reg [7:0] y_fcs_hat;
-
 // Measurement start: axes still to map, and the axis mapped next
 reg [2:0] map_left;
 reg [1:0] map_axis;
@@ -138,7 +135,16 @@ always @* begin
                       JOY2_LEFT  ? 8'd0   :
                       JOY2_RIGHT ? 8'd255 :
                                    8'd128;
-    default: axis_pos = (mode == 3'd5) ? y_fcs_hat :
+    // Thrustmaster FCS
+    //
+    // The Thrustmaster FCS encodes the Hat Switch buttons using fixed resistor values on the Y2 axis.
+    // According to https://www.epanorama.net/documents/joystick/pc_special.html#tmfcs these resistor values are:
+    // Up: 0.2 kOhm, Left: 20 kOhm, Down: 40 kOhm, Right: 60 kOhm, Center: 82 kOhm.
+    // However, in the dosbox-x source code the Left and Right have been swapped and testing confirms this
+    // With a maximum resistor value of 100 kOhm being equal to a maximum value of 255 in the [0,255] range,
+    // the following value mapping is obtained: Up: 1, Right: 51, Down: 102, Left: 153, Center: 209.
+    //  
+    default: axis_pos = (mode == 3'd5) ? (JOY1_UP ? 8'd1 : JOY1_RIGHT ? 8'd51 : JOY1_DOWN ? 8'd102 : JOY1_LEFT ? 8'd153 : 8'd209) :
                         ~use_dpad2 ? { ~ana_2[15], ana_2[14:8] } :
                         JOY2_UP    ? 8'd0   :
                         JOY2_DOWN  ? 8'd255 :
