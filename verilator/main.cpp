@@ -29,6 +29,9 @@
 #include "verilated_save.h"
 
 #include "ide_hps.h"
+#include "cosim_host.h"
+#include "snapshot.h"
+#include "zfile.h"
 #include "control_server.h"
 #include "wav_writer.h"
 #include "zsst_profile.h"
@@ -67,6 +70,7 @@ static VerilatedFstC* trace = nullptr;
 static vluint64_t sim_time = 0;
 uint64_t g_ide_time = 0;
 static bool posedge = false;
+static bool cosim_on = false;      // --cosim: 86Box reference in lockstep
 static bool trace_toggle = false;
 static bool trace_loop_started = false;
 static uint64_t trace_start_cycle = 0;
@@ -248,6 +252,7 @@ static Pixel presentbuffer[H_RES * V_RES]{};
 static WAVWriter* wav_writer = nullptr;
 static uint32_t audio_sample_accum = 0;
 static uint32_t audio_clock_accum = 0;
+static bool g_no_audio_clock = false;
 static constexpr uint32_t AUDIO_SAMPLE_RATE = 48000;
 #ifndef SIM_SYSTEM_CLOCK_HZ
 #define SIM_SYSTEM_CLOCK_HZ 20000000
@@ -749,7 +754,9 @@ static void step() {
 	// clk_audio is an independent 24.576 MHz board clock. Each step is one
 	// half-period of the 20 MHz simulated system clock, so advance a fractional
 	// clock scheduler and evaluate every resulting audio edge.
-	audio_clock_accum += 2 * AUDIO_CLOCK_HZ;
+	// --no-audio-clock: the 24.576 MHz domain (OPL3, mixer, the SB/CMS sample
+	// CDC) stays idle; about 10% faster, but OPL timers and SB playback stop.
+	if (!g_no_audio_clock) audio_clock_accum += 2 * AUDIO_CLOCK_HZ;
 	while (audio_clock_accum >= 2 * SIM_SYS_CLOCK_HZ) {
 		audio_clock_accum -= 2 * SIM_SYS_CLOCK_HZ;
 		tb.clk_audio = !tb.clk_audio;
@@ -1008,16 +1015,26 @@ static void configure_floppy_slot(unsigned slot, bool present, const FloppyGeome
 	pulse_mgmt_write(base + 0xC, 0);
 }
 
+// The CMOS clock's start. By default the host's local time, as Main_MiSTer
+// sets it on the board (support/x86/x86.cpp: localtime(time(NULL))), so a
+// disk image from the board sees no clock change at startup. --rtc fixes it
+// for a reproducible run.
+static std::tm g_rtc_tm{};
+static bool g_rtc_fixed = false;
+
 static void configure_cmos(bool hdd0_present, bool floppy0_present, const FloppyGeometry& floppy0_geo,
                            bool boot_from_floppy = false) {
-	// RTC seed: fixed 2024-01-01 00:00:00 UTC, matching ao486-sim's CMOS seed.
-	// Must NOT use the host wall-clock — otherwise every run is non-deterministic
-	// AND diverges from ao486-sim (whose clock starts at 00:00:00), contaminating
-	// every INT 1Ah time read in the z486<->ao486 CS:EIP diff. gmtime_r keeps it
-	// timezone-independent.
-	std::time_t now = (std::time_t)1704067200;  // 2024-01-01 00:00:00 UTC
-	std::tm tm{};
-	gmtime_r(&now, &tm);
+	// A diff against ao486-sim wants --rtc "2024-01-01 00:00:00" (its CMOS
+	// seed), or every INT 1Ah time read differs.
+	std::tm tm = g_rtc_tm;
+	if (!g_rtc_fixed) {
+		std::time_t now = std::time(nullptr);
+		localtime_r(&now, &tm);
+	}
+	char rtc_text[32];
+	std::strftime(rtc_text, sizeof(rtc_text), "%Y-%m-%d %H:%M:%S", &tm);
+	cout << "CMOS clock starts at " << rtc_text
+	     << (g_rtc_fixed ? " (--rtc)\n" : " (host local time; --rtc to fix it)\n");
 
 	uint8_t cmos[128] = {};
 
@@ -1196,7 +1213,7 @@ static bool dump_vga_planes(const fs::path& path) {
 }
 
 static void usage() {
-	cout << "Usage: Vz486_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--end sim_time] [--disk path] [--cdrom iso] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--variable-vsync] [--vga-border|--no-vga-border] [--fb-bgr|--fb-rgb] [--fb-1555|--fb-565] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--vga-plane-at sim_time:path] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--zsst-debug] [--zsst-write-trace path] [--record] [--record-file path] [--load-ram path] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
+	cout << "Usage: Vz486_mister_sim [--trace] [--trace-start sim_time] [--trace-file path] [--headless] [--cosim] [--end sim_time] [--disk path] [--cdrom iso] [--floppy path] [--boot0 path] [--boot1 path] [--ram-mb 16|32|64|128] [--cpu-speed full|56|30|15] [--cpu-speed-at sim_time:full|56|30|15] [--opl2|--opl3] [--variable-vsync] [--vga-border|--no-vga-border] [--fb-bgr|--fb-rgb] [--fb-1555|--fb-565] [--enter-at sim_time] [--key-at sim_time:key] [--key-down-at sim_time:key] [--key-up-at sim_time:key] [--key-on-text substring:key] [--mouse-at sim_time:dx:dy[:buttons]] [--control-port N] [--control-bind IPv4] [--ctrl-alt-del-at sim_time] [--screen-at sim_time] [--vga-plane-at sim_time:path] [--log-eip CS:EIP] [--screenshot-dir path] [--screenshot-interval sim_time] [--stop-on-text substring] [--no-ide] [--zsst-debug] [--zsst-write-trace path] [--record] [--record-file path] [--load-ram path] [--checkpoint-dir path] [--checkpoint-interval-sec N] [--checkpoint-keep N] [--restore path] [--snapshot-dir path] [--snapshot-interval-sec N] [--snapshot-keep N] [--restore-snapshot path] [--rtc \"YYYY-MM-DD HH:MM:SS\" (CMOS clock start; default host local time)] [--no-audio-clock (faster; no OPL/SB audio)]  (all times are sim_time = 2*cycle; mouse buttons are bits L/R/M)\n";
 }
 
 int main(int argc, char** argv) {
@@ -1210,6 +1227,10 @@ int main(int argc, char** argv) {
 	uint64_t checkpoint_interval_sec = 0;
 	size_t checkpoint_keep = 6;
 	string restore_path;
+	string snapshot_dir;               // --snapshot-dir: portable snapshots (with --cosim)
+	uint64_t snapshot_interval_sec = 0;
+	size_t snapshot_keep = 30;
+	string snapshot_restore_path;      // --restore-snapshot
 	vector<uint64_t> enter_cycles;
 	vector<std::pair<uint64_t, SDL_Keycode>> key_events;
 	vector<std::tuple<uint64_t, SDL_Keycode, bool>> key_edge_events;
@@ -1227,7 +1248,7 @@ int main(int argc, char** argv) {
 	string stop_on_text;
 	string load_ram_path;
 	string zsst_write_trace_path;
-	unsigned ram_mb = 16;
+	unsigned ram_mb = 64;          // the OSD default
 	bool ram_mb_explicit = false;
 	unsigned cpu_speed_status = 0;
 	bool opl3_mode = true;
@@ -1257,6 +1278,8 @@ int main(int argc, char** argv) {
 		} else if (arg == "--trace-file" && i + 1 < argc) {
 			trace_file_name = argv[++i];
 			enable_trace = true;
+		} else if (arg == "--cosim") {
+			cosim_on = true;
 		} else if (arg == "--headless") {
 			g_headless = true;
 		} else if (arg == "--end" && i + 1 < argc) {
@@ -1332,20 +1355,12 @@ int main(int argc, char** argv) {
 				cerr << "--key-at requires sim_time:key\n";
 				return 1;
 			}
-			static const std::map<string, SDL_Keycode> keys = {
-				{"up", SDLK_UP}, {"down", SDLK_DOWN},
-				{"left", SDLK_LEFT}, {"right", SDLK_RIGHT},
-				{"enter", SDLK_RETURN}, {"escape", SDLK_ESCAPE},
-				{"space", SDLK_SPACE}, {"tab", SDLK_TAB},
-				{"alt", SDLK_LALT}, {"f4", SDLK_F4},
-				{"i", SDLK_i}, {"n", SDLK_n}, {"o", SDLK_o}, {"w", SDLK_w},
-			};
-			auto key = keys.find(event.substr(separator + 1));
-			if (key == keys.end()) {
+			SDL_Keycode key = SDLK_UNKNOWN;
+			if (!parse_named_key(event.substr(separator + 1), key)) {
 				cerr << "unsupported --key-at key: " << event.substr(separator + 1) << "\n";
 				return 1;
 			}
-			key_events.push_back({std::stoull(event.substr(0, separator)) / 2, key->second});
+			key_events.push_back({std::stoull(event.substr(0, separator)) / 2, key});
 		} else if ((arg == "--key-down-at" || arg == "--key-up-at") && i + 1 < argc) {
 			string event = argv[++i];
 			size_t separator = event.find(':');
@@ -1353,21 +1368,13 @@ int main(int argc, char** argv) {
 				cerr << arg << " requires sim_time:key\n";
 				return 1;
 			}
-			static const std::map<string, SDL_Keycode> keys = {
-				{"up", SDLK_UP}, {"down", SDLK_DOWN},
-				{"left", SDLK_LEFT}, {"right", SDLK_RIGHT},
-				{"enter", SDLK_RETURN}, {"escape", SDLK_ESCAPE},
-				{"space", SDLK_SPACE}, {"tab", SDLK_TAB},
-				{"alt", SDLK_LALT}, {"f4", SDLK_F4},
-				{"i", SDLK_i}, {"n", SDLK_n}, {"o", SDLK_o}, {"w", SDLK_w},
-			};
-			auto key = keys.find(event.substr(separator + 1));
-			if (key == keys.end()) {
+			SDL_Keycode key = SDLK_UNKNOWN;
+			if (!parse_named_key(event.substr(separator + 1), key)) {
 				cerr << "unsupported " << arg << " key: " << event.substr(separator + 1) << "\n";
 				return 1;
 			}
 			key_edge_events.push_back({std::stoull(event.substr(0, separator)) / 2,
-			                           key->second, arg == "--key-down-at"});
+			                           key, arg == "--key-down-at"});
 		} else if (arg == "--key-on-text" && i + 1 < argc) {
 			string event = argv[++i];
 			size_t separator = event.rfind(':');
@@ -1375,20 +1382,12 @@ int main(int argc, char** argv) {
 				cerr << "--key-on-text requires substring:key\n";
 				return 1;
 			}
-			static const std::map<string, SDL_Keycode> keys = {
-				{"up", SDLK_UP}, {"down", SDLK_DOWN},
-				{"left", SDLK_LEFT}, {"right", SDLK_RIGHT},
-				{"enter", SDLK_RETURN}, {"escape", SDLK_ESCAPE},
-				{"space", SDLK_SPACE}, {"tab", SDLK_TAB},
-				{"alt", SDLK_LALT}, {"f4", SDLK_F4},
-				{"i", SDLK_i}, {"n", SDLK_n}, {"o", SDLK_o}, {"w", SDLK_w},
-			};
-			auto key = keys.find(event.substr(separator + 1));
-			if (key == keys.end()) {
+			SDL_Keycode key = SDLK_UNKNOWN;
+			if (!parse_named_key(event.substr(separator + 1), key)) {
 				cerr << "unsupported --key-on-text key: " << event.substr(separator + 1) << "\n";
 				return 1;
 			}
-			text_key_events.push_back({event.substr(0, separator), key->second});
+			text_key_events.push_back({event.substr(0, separator), key});
 		} else if (arg == "--mouse-at" && i + 1 < argc) {
 			string event = argv[++i];
 			vector<string> fields;
@@ -1483,6 +1482,26 @@ int main(int argc, char** argv) {
 			checkpoint_keep = static_cast<size_t>(std::stoull(argv[++i]));
 		} else if (arg == "--restore" && i + 1 < argc) {
 			restore_path = argv[++i];
+		} else if (arg == "--no-audio-clock") {
+			g_no_audio_clock = true;
+		} else if ((arg == "--rtc" || arg == "--rtc-utc") && i + 1 < argc) {
+			std::tm tm{};
+			const char* end = strptime(argv[++i], "%Y-%m-%d %H:%M:%S", &tm);
+			if (!end || *end) {
+				cerr << "--rtc wants \"YYYY-MM-DD HH:MM:SS\"\n";
+				return 1;
+			}
+			std::time_t t = timegm(&tm);  // fills in the day of the week
+			gmtime_r(&t, &g_rtc_tm);
+			g_rtc_fixed = true;
+		} else if (arg == "--snapshot-dir" && i + 1 < argc) {
+			snapshot_dir = argv[++i];
+		} else if (arg == "--snapshot-interval-sec" && i + 1 < argc) {
+			snapshot_interval_sec = std::stoull(argv[++i]);
+		} else if (arg == "--snapshot-keep" && i + 1 < argc) {
+			snapshot_keep = static_cast<size_t>(std::stoull(argv[++i]));
+		} else if (arg == "--restore-snapshot" && i + 1 < argc) {
+			snapshot_restore_path = argv[++i];
 		} else if (!arg.empty() && arg[0] == '+') {
 			// Verilator plusargs are consumed by Verilated::commandArgs() and
 			// may be used by RTL diagnostics via $test$plusargs.
@@ -1495,6 +1514,16 @@ int main(int argc, char** argv) {
 	if (!checkpoint_dir.empty() && checkpoint_interval_sec == 0) {
 		checkpoint_interval_sec = 600;
 	}
+	if (!snapshot_dir.empty() && snapshot_interval_sec == 0) snapshot_interval_sec = 60;
+	if ((!snapshot_dir.empty() || !snapshot_restore_path.empty()) && !cosim_on) {
+		cerr << "portable snapshots need --cosim (the reference holds the CPU state)\n";
+		return 1;
+	}
+	if (!snapshot_restore_path.empty() && !restore_path.empty()) {
+		cerr << "--restore and --restore-snapshot are exclusive\n";
+		return 1;
+	}
+	const bool restoring = !restore_path.empty() || !snapshot_restore_path.empty();
 	if (!screenshot_dir.empty()) {
 		if (screenshot_interval_cycles == 0) screenshot_interval_cycles = 12500000;
 		fs::create_directories(screenshot_dir);
@@ -1571,7 +1600,7 @@ int main(int argc, char** argv) {
 
 	vector<uint8_t> boot0;
 	vector<uint8_t> boot1;
-	if (restore_path.empty()) {
+	if (!restoring) {
 		try {
 			boot0 = read_file(boot0_path);
 			boot1 = read_file(boot1_path);
@@ -1586,15 +1615,17 @@ int main(int argc, char** argv) {
 	HpsFloppy floppy0;
 	ide0.set_debug(g_ide_debug);
 	ide1.set_debug(g_ide_debug);
-	if (restore_path.empty() && !ide0.open(disk_path)) {
+	if (!restoring && !ide0.open(disk_path)) {
 		cerr << "failed to open disk image " << disk_path << "\n";
 		return 1;
 	}
-	if (restore_path.empty() && !cdrom_path.empty() && !ide1.open_cdrom(cdrom_path)) {
+	if (!restoring && !cdrom_path.empty() && !ide1.open_cdrom(cdrom_path)) {
 		cerr << "failed to open CD-ROM image " << cdrom_path << "\n";
 		return 1;
 	}
-	if (restore_path.empty() && !floppy_path.empty()) {
+	// The floppy model keeps no state of its own: a restore reopens the image
+	// (its contents as in the file; writes since the snapshot are not kept).
+	if (!floppy_path.empty()) {
 		try {
 			floppy0.open(floppy_path);
 		} catch (const std::exception& e) {
@@ -1618,6 +1649,11 @@ int main(int argc, char** argv) {
 	int frame_x_max = 0;
 	int frame_line_max = 0;
 	uint64_t next_console_text_check = 0;
+	// Frames closer than 1/80 s of simulated time (a BIOS retrace loop with a
+	// few-line mode programmed) are not rendered, presented or logged.
+	static constexpr uint64_t MIN_FRAME_CYCLES = SIM_SYS_CLOCK_HZ / 80;
+	uint64_t last_full_frame_cycle = 0;
+	uint64_t frames_skipped = 0;
 	std::string last_console_text;
 	std::set<std::string> traced_console_markers;
 	size_t next_text_key_event = 0;
@@ -1662,9 +1698,11 @@ int main(int argc, char** argv) {
 	tb.clk_sys = 0;
 	tb.clk_audio = 0;
 	tb.reset = 1;
-	unsigned ram_size_code = (ram_mb == 16) ? 0 :
-	                         (ram_mb == 32) ? 1 :
-	                         (ram_mb == 64) ? 2 : 3;
+	// MiSTer status option index: 64/128/16/32MB (64MB is the default).
+	if (cosim_on) cosim_host_enable(&tb, ram_mb);
+	unsigned ram_size_code = (ram_mb == 64) ? 0 :
+	                         (ram_mb == 128) ? 1 :
+	                         (ram_mb == 16) ? 2 : 3;
 	tb.status = (uint64_t{cpu_speed_status} << 8) |
 	            (uint64_t{ram_size_code} << 61) |
 	            (uint64_t{variable_vsync} << 4) |
@@ -1688,7 +1726,11 @@ int main(int argc, char** argv) {
 		cout << "Recording mixed audio to " << record_path << " at " << AUDIO_SAMPLE_RATE << " Hz\n";
 	}
 
-	if (restore_path.empty()) {
+	if (!snapshot_restore_path.empty()) {
+		// Portable snapshot: hold the system in reset so the CPU's
+		// synchronous reset takes effect; the rest is overwritten below.
+		for (int k = 0; k < 8; k++) full_step();
+	} else if (restore_path.empty()) {
 		stage_roms_to_ddr(boot0, boot1);
 		if (!load_ram_path.empty()) {
 			// A whole-memory image (an architectural snapshot's RAM with its
@@ -1866,8 +1908,18 @@ int main(int argc, char** argv) {
 			}
 		}
 
-		if (tb.video_vs && !prev_vs) {
+		if (tb.video_vs && !prev_vs && last_full_frame_cycle != 0 &&
+		    cycle - last_full_frame_cycle < MIN_FRAME_CYCLES) {
+			// Clear only the rows this frame drew.
+			const int rows = std::min(frame_line_max + 1, V_RES);
+			std::fill(screenbuffer, screenbuffer + rows * H_RES, Pixel{0xff, 0x00, 0x00, 0x00});
+			frames_skipped++;
+			frame_pix_cnt = 0;
+			frame_x_max = 0;
+			frame_line_max = 0;
+		} else if (tb.video_vs && !prev_vs) {
 			saw_video_sync = true;
+			last_full_frame_cycle = cycle;
 			const bool zsst_frame = render_zsst_frame(
 				presentbuffer, resolution_x, resolution_y);
 			const bool svga_frame = !zsst_frame && render_svga_frame(
@@ -1889,6 +1941,10 @@ int main(int argc, char** argv) {
 				cout << " zsst=" << resolution_x << "x" << resolution_y;
 			else if (svga_frame)
 				cout << " fb=" << resolution_x << "x" << resolution_y;
+			if (frames_skipped) {
+				cout << " skipped=" << frames_skipped;
+				frames_skipped = 0;
+			}
 			cout << "\n";
 			if (!screenshot_dir.empty() && cycle >= next_screenshot_cycle) {
 				fs::path path = fs::path(screenshot_dir) /
@@ -2003,6 +2059,66 @@ int main(int argc, char** argv) {
 		}
 	};
 
+	auto write_harness = [&](std::ostream& out) {
+		const uint32_t magic = 0x5A434B50; // ZCKP
+		const uint32_t version = 6;
+		write_pod(out, magic);
+		write_pod(out, version);
+		write_pod(out, sim_time);
+		write_pod(out, current_cycle);
+		write_pod(out, posedge);
+		write_pod(out, audio_clock_accum);
+		write_pod(out, audio_sample_accum);
+		write_vector_u8(out, ddram_mem);
+		write_pod(out, ddram_resp_valid);
+		write_pod(out, ddram_resp_data);
+		write_vector_u8(out, fb_mem);
+		write_pod(out, fb_palette);
+		write_vector_u8(out, zsst_mem);
+		write_scheduled_events(out, ps2_events);
+		write_pod(out, next_ps2_event);
+		write_scheduled_events(out, mouse_events);
+		write_pod(out, next_mouse_event);
+		write_deque_u8(out, kbd_scancode_queue);
+		write_deque_u8(out, mouse_byte_queue);
+		write_pod(out, last_kbd_byte_time);
+		write_pod(out, last_mouse_byte_time);
+		write_pod(out, ps2_kbd_scan_set);
+		write_pod(out, ps2_mouse_buttons);
+		write_pod(out, pending_kbd_cmd);
+		write_pod(out, pending_kbd_arg);
+		write_pod(out, kbd_host_busy);
+		write_pod(out, kbd_host_clear_pending);
+		write_vector_u64(out, screen_check_cycles);
+		write_pod(out, next_screen_check);
+		for (bool seen : boot_pages_seen) {
+			uint8_t value = seen ? 1 : 0;
+			write_pod(out, value);
+		}
+		write_pod(out, saw_first_instruction);
+		write_pod(out, saw_post);
+		write_pod(out, saw_video_sync);
+		write_pod(out, saw_boot_sector);
+		write_pod(out, saw_post_boot_exec);
+		write_pod(out, saw_boot_menu_text);
+		write_pod(out, saw_nonblack_pixel);
+		write_pod(out, boot_page_logs);
+		write_pod(out, prev_vs);
+		write_pod(out, prev_hs);
+		write_pod(out, prev_de);
+		write_pod(out, bios_dbg_wr_prev);
+		write_pod(out, last_post);
+		write_pod(out, have_post);
+		write_pod(out, mouse_captured);
+		write_pod(out, last_title_sim_time);
+		write_pod(out, resolution_x);
+		write_pod(out, resolution_y);
+		write_pod(out, next_console_text_check);
+		write_string(out, last_console_text);
+		ide0.save(out);
+		ide1.save(out);
+	};
+
 	auto save_checkpoint = [&](uint64_t cycle) {
 		if (checkpoint_dir.empty()) return;
 
@@ -2022,65 +2138,12 @@ int main(int argc, char** argv) {
 			save.close();
 		}
 
+		if (cosim_on && !cosim_host_save((tmp_dir / "cosim.bin").string().c_str()))
+			throw std::runtime_error("cosim checkpoint save failed");
+
 		{
 			std::ofstream out(tmp_dir / "harness.bin", ios::binary);
-			const uint32_t magic = 0x5A434B50; // ZCKP
-			const uint32_t version = 6;
-			write_pod(out, magic);
-			write_pod(out, version);
-			write_pod(out, sim_time);
-			write_pod(out, current_cycle);
-			write_pod(out, posedge);
-			write_pod(out, audio_clock_accum);
-			write_pod(out, audio_sample_accum);
-			write_vector_u8(out, ddram_mem);
-			write_pod(out, ddram_resp_valid);
-			write_pod(out, ddram_resp_data);
-			write_vector_u8(out, fb_mem);
-			write_pod(out, fb_palette);
-			write_vector_u8(out, zsst_mem);
-			write_scheduled_events(out, ps2_events);
-			write_pod(out, next_ps2_event);
-			write_scheduled_events(out, mouse_events);
-			write_pod(out, next_mouse_event);
-			write_deque_u8(out, kbd_scancode_queue);
-			write_deque_u8(out, mouse_byte_queue);
-			write_pod(out, last_kbd_byte_time);
-			write_pod(out, last_mouse_byte_time);
-			write_pod(out, ps2_kbd_scan_set);
-			write_pod(out, ps2_mouse_buttons);
-			write_pod(out, pending_kbd_cmd);
-			write_pod(out, pending_kbd_arg);
-			write_pod(out, kbd_host_busy);
-			write_pod(out, kbd_host_clear_pending);
-			write_vector_u64(out, screen_check_cycles);
-			write_pod(out, next_screen_check);
-			for (bool seen : boot_pages_seen) {
-				uint8_t value = seen ? 1 : 0;
-				write_pod(out, value);
-			}
-			write_pod(out, saw_first_instruction);
-			write_pod(out, saw_post);
-			write_pod(out, saw_video_sync);
-			write_pod(out, saw_boot_sector);
-			write_pod(out, saw_post_boot_exec);
-			write_pod(out, saw_boot_menu_text);
-			write_pod(out, saw_nonblack_pixel);
-			write_pod(out, boot_page_logs);
-			write_pod(out, prev_vs);
-			write_pod(out, prev_hs);
-			write_pod(out, prev_de);
-			write_pod(out, bios_dbg_wr_prev);
-			write_pod(out, last_post);
-			write_pod(out, have_post);
-			write_pod(out, mouse_captured);
-			write_pod(out, last_title_sim_time);
-			write_pod(out, resolution_x);
-			write_pod(out, resolution_y);
-			write_pod(out, next_console_text_check);
-			write_string(out, last_console_text);
-			ide0.save(out);
-			ide1.save(out);
+			write_harness(out);
 		}
 
 		{
@@ -2103,94 +2166,85 @@ int main(int argc, char** argv) {
 		cout << sim_time << ": checkpoint saved to " << final_dir << "\n";
 	};
 
-	auto restore_checkpoint = [&]() {
-		if (restore_path.empty()) return;
-
-		fs::path dir = resolve_restore_path(restore_path);
-		{
-			VerilatedRestore restore;
-			restore.open((dir / "model.vlt").string());
-			restore >> tb;
-			restore.close();
+	auto read_harness = [&](std::istream& in) {
+		uint32_t magic = 0;
+		uint32_t version = 0;
+		read_pod(in, magic);
+		read_pod(in, version);
+		if (magic != 0x5A434B50 || (version < 1 || version > 6)) {
+			throw std::runtime_error("bad simulator checkpoint");
 		}
-
-		{
-			std::ifstream in(dir / "harness.bin", ios::binary);
-			uint32_t magic = 0;
-			uint32_t version = 0;
-			read_pod(in, magic);
-			read_pod(in, version);
-			if (magic != 0x5A434B50 || (version < 1 || version > 6)) {
-				throw std::runtime_error("bad simulator checkpoint");
-			}
-			read_pod(in, sim_time);
-			read_pod(in, current_cycle);
-			read_pod(in, posedge);
-			if (version >= 4) {
-				read_pod(in, audio_clock_accum);
-				read_pod(in, audio_sample_accum);
-			} else {
-				audio_clock_accum = 0;
-				audio_sample_accum = 0;
-			}
-			read_vector_u8(in, ddram_mem);
-			read_pod(in, ddram_resp_valid);
-			read_pod(in, ddram_resp_data);
-			if (version >= 5) {
-				read_vector_u8(in, fb_mem);
-				read_pod(in, fb_palette);
-			}
-			if (version >= 6)
-				read_vector_u8(in, zsst_mem);
-			else
-				std::fill(zsst_mem.begin(), zsst_mem.end(), 0);
-			read_scheduled_events(in, ps2_events);
-			read_pod(in, next_ps2_event);
-			if (version >= 3) {
-				read_scheduled_events(in, mouse_events);
-				read_pod(in, next_mouse_event);
-			}
-			read_deque_u8(in, kbd_scancode_queue);
-			if (version >= 2) read_deque_u8(in, mouse_byte_queue);
-			read_pod(in, last_kbd_byte_time);
-			if (version >= 2) read_pod(in, last_mouse_byte_time);
-			read_pod(in, ps2_kbd_scan_set);
-			if (version >= 2) read_pod(in, ps2_mouse_buttons);
-			read_pod(in, pending_kbd_cmd);
-			read_pod(in, pending_kbd_arg);
-			read_pod(in, kbd_host_busy);
-			read_pod(in, kbd_host_clear_pending);
-			read_vector_u64(in, screen_check_cycles);
-			read_pod(in, next_screen_check);
-			for (auto& seen : boot_pages_seen) {
-				uint8_t value = 0;
-				read_pod(in, value);
-				seen = value != 0;
-			}
-			read_pod(in, saw_first_instruction);
-			read_pod(in, saw_post);
-			read_pod(in, saw_video_sync);
-			read_pod(in, saw_boot_sector);
-			read_pod(in, saw_post_boot_exec);
-			read_pod(in, saw_boot_menu_text);
-			read_pod(in, saw_nonblack_pixel);
-			read_pod(in, boot_page_logs);
-			read_pod(in, prev_vs);
-			read_pod(in, prev_hs);
-			read_pod(in, prev_de);
-			read_pod(in, bios_dbg_wr_prev);
-			read_pod(in, last_post);
-			read_pod(in, have_post);
-			if (version >= 2) read_pod(in, mouse_captured);
-			read_pod(in, last_title_sim_time);
-			read_pod(in, resolution_x);
-			read_pod(in, resolution_y);
-			read_pod(in, next_console_text_check);
-			read_string(in, last_console_text);
-			ide0.load(in);
-			ide1.load(in);
+		read_pod(in, sim_time);
+		read_pod(in, current_cycle);
+		read_pod(in, posedge);
+		if (version >= 4) {
+			read_pod(in, audio_clock_accum);
+			read_pod(in, audio_sample_accum);
+		} else {
+			audio_clock_accum = 0;
+			audio_sample_accum = 0;
 		}
+		read_vector_u8(in, ddram_mem);
+		read_pod(in, ddram_resp_valid);
+		read_pod(in, ddram_resp_data);
+		if (version >= 5) {
+			read_vector_u8(in, fb_mem);
+			read_pod(in, fb_palette);
+		}
+		if (version >= 6)
+			read_vector_u8(in, zsst_mem);
+		else
+			std::fill(zsst_mem.begin(), zsst_mem.end(), 0);
+		read_scheduled_events(in, ps2_events);
+		read_pod(in, next_ps2_event);
+		if (version >= 3) {
+			read_scheduled_events(in, mouse_events);
+			read_pod(in, next_mouse_event);
+		}
+		read_deque_u8(in, kbd_scancode_queue);
+		if (version >= 2) read_deque_u8(in, mouse_byte_queue);
+		read_pod(in, last_kbd_byte_time);
+		if (version >= 2) read_pod(in, last_mouse_byte_time);
+		read_pod(in, ps2_kbd_scan_set);
+		if (version >= 2) read_pod(in, ps2_mouse_buttons);
+		read_pod(in, pending_kbd_cmd);
+		read_pod(in, pending_kbd_arg);
+		read_pod(in, kbd_host_busy);
+		read_pod(in, kbd_host_clear_pending);
+		read_vector_u64(in, screen_check_cycles);
+		read_pod(in, next_screen_check);
+		for (auto& seen : boot_pages_seen) {
+			uint8_t value = 0;
+			read_pod(in, value);
+			seen = value != 0;
+		}
+		read_pod(in, saw_first_instruction);
+		read_pod(in, saw_post);
+		read_pod(in, saw_video_sync);
+		read_pod(in, saw_boot_sector);
+		read_pod(in, saw_post_boot_exec);
+		read_pod(in, saw_boot_menu_text);
+		read_pod(in, saw_nonblack_pixel);
+		read_pod(in, boot_page_logs);
+		read_pod(in, prev_vs);
+		read_pod(in, prev_hs);
+		read_pod(in, prev_de);
+		read_pod(in, bios_dbg_wr_prev);
+		read_pod(in, last_post);
+		read_pod(in, have_post);
+		if (version >= 2) read_pod(in, mouse_captured);
+		read_pod(in, last_title_sim_time);
+		read_pod(in, resolution_x);
+		read_pod(in, resolution_y);
+		read_pod(in, next_console_text_check);
+		read_string(in, last_console_text);
+		ide0.load(in);
+		ide1.load(in);
+	};
 
+	// Input events still to come after a restore: those left in the
+	// checkpoint and those given on this command line.
+	auto requeue_input_events = [&]() {
 		std::vector<ScheduledPs2Bytes> pending_events;
 		pending_events.insert(pending_events.end(), ps2_events.begin() + next_ps2_event,
 		                      ps2_events.end());
@@ -2217,6 +2271,30 @@ int main(int argc, char** argv) {
 			});
 		mouse_events = std::move(pending_mouse_events);
 		next_mouse_event = 0;
+	};
+
+	auto restore_checkpoint = [&]() {
+		if (restore_path.empty()) return;
+
+		fs::path dir = resolve_restore_path(restore_path);
+		{
+			VerilatedRestore restore;
+			restore.open((dir / "model.vlt").string());
+			restore >> tb;
+			restore.close();
+		}
+
+		if (cosim_on && !cosim_host_load((dir / "cosim.bin").string().c_str()))
+			throw std::runtime_error("no cosim state in this checkpoint (" + (dir / "cosim.bin").string() + ")");
+
+		{
+			std::ifstream in(dir / "harness.bin", ios::binary);
+			read_harness(in);
+		}
+		ide0.adopt_image_path(disk_path);
+		if (!cdrom_path.empty()) ide1.adopt_image_path(cdrom_path);
+
+		requeue_input_events();
 
 		loop_start_cycle = current_cycle + 1;
 		next_checkpoint_at = std::chrono::steady_clock::now() +
@@ -2229,8 +2307,121 @@ int main(int argc, char** argv) {
 		cout << "restored checkpoint " << dir << " at sim_time " << sim_time << " (cycle " << current_cycle << ")\n";
 	};
 
+	// Portable snapshots: a co-simulation boundary (cosim_host_snapshot_ready)
+	// at the start of a clock. state.bin holds the system outside the CPU by
+	// name, cosim.bin the reference (whose state z486 is restored to),
+	// harness.bin this program's devices. Taken at the start of a loop
+	// iteration, restored to the start of the same one.
+	auto next_snapshot_at = std::chrono::steady_clock::now() +
+		std::chrono::seconds(snapshot_interval_sec ? snapshot_interval_sec : 1);
+	auto save_snapshot = [&]() {
+		std::ostringstream name;
+		name << "snap_" << std::setw(16) << std::setfill('0') << current_cycle;
+		fs::path final_dir = fs::path(snapshot_dir) / name.str();
+		fs::path tmp_dir = fs::path(snapshot_dir) / (name.str() + ".tmp");
+		fs::remove_all(tmp_dir);
+		fs::create_directories(tmp_dir);
+		const size_t ram_diffs = cosim_host_compare_ram();
+		string ram_key;
+		// Guest RAM is restored from the reference's (cosim.bin + keyframe).
+		if (!snapshot_save_state(&tb, (tmp_dir / "state.bin.zst").string(),
+		                         {"guest_memory__DOT__memory__DOT__mem"}) ||
+		    !cosim_host_save_portable(tmp_dir.string(), (fs::path(snapshot_dir) / "keys").string(),
+		                              current_cycle, ram_key))
+			throw std::runtime_error("snapshot save failed");
+		{
+			std::ostringstream out(ios::binary);
+			write_harness(out);
+			const string data = out.str();
+			const string path = (tmp_dir / "harness.bin.zst").string();
+			FILE* f = zfile_open_write(path);
+			const bool ok = f && fwrite(data.data(), 1, data.size(), f) == data.size();
+			if (!zfile_close(f, path) || !ok) throw std::runtime_error("snapshot save failed: " + path);
+		}
+		{
+			std::ofstream meta(tmp_dir / "meta.txt");
+			meta << "cycle " << current_cycle << "\n";
+			meta << "sim_time " << sim_time << "\n";
+			meta << "disk " << disk_path << "\n";
+			meta << "ram_key " << ram_key << "\n";
+			meta << "ram_diffs " << ram_diffs << "\n";
+		}
+		fs::remove_all(final_dir);
+		fs::rename(tmp_dir, final_dir);
+		{
+			std::ofstream latest(fs::path(snapshot_dir) / "latest.txt");
+			latest << final_dir.string() << "\n";
+		}
+		vector<fs::path> entries;
+		for (const auto& entry : fs::directory_iterator(snapshot_dir)) {
+			const string n = entry.path().filename().string();
+			if (entry.is_directory() && n.rfind("snap_", 0) == 0 && n.find(".tmp") == string::npos)
+				entries.push_back(entry.path());
+		}
+		std::sort(entries.begin(), entries.end());
+		while (snapshot_keep && entries.size() > snapshot_keep) {
+			fs::remove_all(entries.front());
+			entries.erase(entries.begin());
+		}
+		// Keyframes no remaining snapshot uses.
+		std::set<string> keys_used;
+		for (const auto& e : entries) {
+			std::ifstream meta(e / "meta.txt");
+			string k, v;
+			while (meta >> k >> v)
+				if (k == "ram_key") keys_used.insert(v);
+		}
+		const fs::path keydir = fs::path(snapshot_dir) / "keys";
+		if (fs::exists(keydir))
+			for (const auto& k : fs::directory_iterator(keydir))
+				if (!keys_used.count(k.path().filename().string())) fs::remove(k.path());
+		cout << sim_time << ": snapshot saved to " << final_dir << " (RAM differences " << ram_diffs << ")\n";
+	};
+
+	auto restore_snapshot = [&]() {
+		fs::path dir(snapshot_restore_path);
+		if (!fs::exists(dir / "state.bin") && !fs::exists(dir / "state.bin.zst") &&
+		    fs::exists(dir / "latest.txt")) {
+			std::ifstream in(dir / "latest.txt");
+			string line;
+			std::getline(in, line);
+			if (!line.empty()) dir = line;
+		}
+		const fs::path state = fs::exists(dir / "state.bin.zst") ? dir / "state.bin.zst" : dir / "state.bin";
+		if (!snapshot_load_state(&tb, state.string()))
+			throw std::runtime_error("cannot read " + state.string());
+		if (fs::exists(dir / "harness.bin.zst")) {
+			const string path = (dir / "harness.bin.zst").string();
+			FILE* f = zfile_open_read(path);
+			string data;
+			char buf[1 << 16];
+			for (size_t n; f && (n = fread(buf, 1, sizeof(buf), f)) > 0;) data.append(buf, n);
+			if (!zfile_close(f, path)) throw std::runtime_error("cannot read " + path);
+			std::istringstream in(data, ios::binary);
+			read_harness(in);
+		} else {
+			std::ifstream in(dir / "harness.bin", ios::binary);
+			read_harness(in);
+		}
+		requeue_input_events();
+		ide0.adopt_image_path(disk_path);
+		if (!cdrom_path.empty()) ide1.adopt_image_path(cdrom_path);
+		if (!cosim_host_load_portable(dir.string()))
+			throw std::runtime_error("cannot restore the co-simulation state in " + dir.string());
+		loop_start_cycle = current_cycle;
+		next_checkpoint_at = std::chrono::steady_clock::now() +
+			std::chrono::seconds(checkpoint_interval_sec ? checkpoint_interval_sec : 1);
+		if (!g_headless) {
+			bool restored_mouse_capture = mouse_captured;
+			mouse_captured = false;
+			set_mouse_capture(restored_mouse_capture);
+		}
+		cout << "restored snapshot " << dir << " at sim_time " << sim_time << " (cycle " << current_cycle << ")\n";
+	};
+
 	try {
 		restore_checkpoint();
+		if (!snapshot_restore_path.empty()) restore_snapshot();
 	} catch (const std::exception& e) {
 		cerr << e.what() << "\n";
 		return 1;
@@ -2346,6 +2537,18 @@ int main(int argc, char** argv) {
 
 	for (uint64_t cycle = loop_start_cycle; cycle < max_cycles && running && (force_stop_cycle == 0 || cycle < force_stop_cycle); ++cycle) {
 		current_cycle = cycle;
+		if (!snapshot_dir.empty() && std::chrono::steady_clock::now() >= next_snapshot_at &&
+		    cosim_host_snapshot_ready()) {
+			try {
+				save_snapshot();
+			} catch (const std::exception& e) {
+				cerr << "snapshot failed: " << e.what() << "\n";
+				running = false;
+				break;
+			}
+			next_snapshot_at = std::chrono::steady_clock::now() +
+				std::chrono::seconds(snapshot_interval_sec);
+		}
 		while (next_cpu_speed_event < cpu_speed_events.size() &&
 		       cpu_speed_events[next_cpu_speed_event].first == cycle) {
 			const unsigned speed = cpu_speed_events[next_cpu_speed_event].second;
@@ -2370,6 +2573,8 @@ int main(int argc, char** argv) {
 		if (!tb.clk_sys) {
 			keyboard_send_pre(cycle);
 			mouse_send_pre(cycle);
+			// The taps show the transfers of the coming rising edge.
+			if (cosim_on && !cosim_host_cycle(sim_time)) running = false;
 		}
 		step();
 		keyboard_observe_post(cycle);
@@ -2388,6 +2593,8 @@ int main(int argc, char** argv) {
 		if (!tb.clk_sys) {
 			keyboard_send_pre(cycle);
 			mouse_send_pre(cycle);
+			// The taps show the transfers of the coming rising edge.
+			if (cosim_on && !cosim_host_cycle(sim_time)) running = false;
 		}
 		step();
 		keyboard_observe_post(cycle);
@@ -2619,6 +2826,7 @@ int main(int argc, char** argv) {
 		fclose(g_zsst_write_trace);
 		g_zsst_write_trace = nullptr;
 	}
+	if (cosim_on) cosim_host_report();
 	if (!g_headless && mouse_captured) set_mouse_capture(false);
 	if (sdl_texture) SDL_DestroyTexture(sdl_texture);
 	if (sdl_renderer) SDL_DestroyRenderer(sdl_renderer);

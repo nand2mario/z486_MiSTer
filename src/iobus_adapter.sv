@@ -41,6 +41,7 @@ module iobus_adapter (
     output reg [31:0]  ide_writedata,
     input      [31:0]  ide_readdata,
     output reg         ide_32,
+    input              ide_hold,          // fast-read data port: word not yet from the HPS
 
     // (direct_handled removed - all ports go through byte FSM for simplicity)
     input       [7:0]  direct_readdata,   // unused, kept for port compatibility
@@ -272,7 +273,9 @@ always @(posedge clk) begin
             // ide_read asserted at S_IDLE. IDE registers readdata at edge+1.
             // At edge+2 (S_IDE32W), ide_readdata has the valid value.
             // ================================================================
-            S_IDE32:    state <= S_IDE32W;
+            // A fast-mode data read that gets ahead of the HPS holds here until
+            // the IDE block has registered the word (ide_hold drops).
+            S_IDE32:    if (!ide_hold) state <= S_IDE32W;
             S_IDE32W: begin
                 if (is_read)
                     cpu_dout <= ide_readdata;

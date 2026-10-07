@@ -16,7 +16,7 @@ SDL_LIBS=$(shell sdl2-config --libs)
 PNG_CFLAGS=$(shell pkg-config --cflags libpng)
 PNG_LIBS=$(shell pkg-config --libs libpng)
 VERILATOR_X_FLAGS ?=
-VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z486_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) -GENABLE_X87=$(ENABLE_X87) --cc --exe --build -j $(VERILATOR_BUILD_JOBS) $(VERILATOR_X_FLAGS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread" -MAKEFLAGS "OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -DZ486_ALTERA_ALU=1
+VERILATOR_FLAGS = +1800-2017ext+sv --trace-fst --trace-structs --savable --top-module z486_mister_sim --Mdir $(OBJ_DIR) -GCLOCK_RATE_HZ=$(SIM_CLOCK_HZ) -GENABLE_X87=$(ENABLE_X87) --cc --exe $(VERILATOR_X_FLAGS) -CFLAGS "$(SDL_CFLAGS) $(PNG_CFLAGS) $(SIM_OPT_LEVEL) $(SIM_ARCH_FLAGS) -DSIM_SYSTEM_CLOCK_HZ=$(SIM_CLOCK_HZ) -std=c++17 -pthread" -LDFLAGS "$(SDL_LIBS) $(PNG_LIBS) -pthread $(abspath $(COSIM_LIB)) -lm" -Wno-WIDTH -Wno-PINMISSING -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-IMPLICITSTATIC -Wno-CASEOVERLAP -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-REALCVT -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-LATCH -Wno-BLKANDNBLK -DZ486_ALTERA_ALU=1
 VERILATOR_INCLUDE = -I../src -I../src/z486 -I../src/z486/x87
 
 D=../src
@@ -59,7 +59,19 @@ SOURCES = $(EXTRA_SOURCES) \
 		  $(D)/soc/sound/opl3/timers.sv $(D)/soc/sound/opl3/tremolo.sv $(D)/soc/sound/opl3/trick_sw_detection.sv \
 		  $(D)/soc/sound/opl3/vibrato.sv $(D)/soc/sound/opl3/opl3.sv
 
-CPP_SOURCES = main.cpp ide_hps.cpp control_server.cpp
+CPP_SOURCES = main.cpp ide_hps.cpp control_server.cpp cosim_host.cpp snapshot.cpp
+
+# 86Box CPU core as the --cosim reference (C, built in its own directory from
+# an 86Box checkout at $(COSIM_DIR)/86Box). Without the checkout the sim links
+# a stub and --cosim reports that the reference is missing.
+COSIM_DIR = cosim
+COSIM_CPU = $(COSIM_DIR)/86Box/src/cpu
+ifneq ($(wildcard $(COSIM_CPU)/x86seg.c),)
+COSIM_LIB = $(COSIM_DIR)/libcosim86.a
+else
+COSIM_LIB = $(COSIM_DIR)/libcosim86_stub.a
+$(info No 86Box checkout at $(COSIM_DIR)/86Box: building without --cosim)
+endif
 
 ZSST ?= ../src/zsst
 VOODOO_SOURCES = \
@@ -92,12 +104,20 @@ VOODOO_SOURCES = \
 
 all: $(OBJ_DIR)/Vz486_mister_sim
 
-$(OBJ_DIR)/Vz486_mister_sim: $(SOURCES) $(CPP_SOURCES) ../src/z486/ucode.hex \
+$(COSIM_LIB): $(wildcard $(COSIM_DIR)/*.c $(COSIM_DIR)/*.h $(COSIM_CPU)/*.c $(COSIM_CPU)/*.h)
+	$(MAKE) -C $(COSIM_DIR) $(notdir $(COSIM_LIB))
+
+$(OBJ_DIR)/Vz486_mister_sim: $(SOURCES) $(CPP_SOURCES) cosim_host.h snapshot.h zfile.h ide_hps.h gen_state_table.py $(COSIM_LIB) ../src/z486/ucode.hex \
 		../src/z486/pla_entry_rom.hex ../src/z486/pla_group_entry.hex Makefile
+	@# Verilator's own makefile does not see libcosim86.a: relink explicitly.
+	rm -f $@
 	ln -sf ../src/z486/ucode.hex .
 	ln -sf ../src/z486/pla_entry_rom.hex .
 	ln -sf ../src/z486/pla_group_entry.hex .
-	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INCLUDE) $(SOURCES) $(CPP_SOURCES)
+	@# Verilate, list the model's state for portable snapshots, then compile.
+	$(VERILATOR) $(VERILATOR_FLAGS) $(VERILATOR_INCLUDE) $(SOURCES) $(CPP_SOURCES) $(abspath $(OBJ_DIR))/state_table.cpp
+	python3 gen_state_table.py $(OBJ_DIR) Vz486_mister_sim $(OBJ_DIR)/state_table.cpp
+	$(MAKE) -C $(OBJ_DIR) -f Vz486_mister_sim.mk -j $(VERILATOR_BUILD_JOBS) OPT_FAST=$(SIM_OPT_LEVEL) OPT_GLOBAL=$(SIM_OPT_LEVEL)
 
 run: $(OBJ_DIR)/Vz486_mister_sim
 	./$(OBJ_DIR)/Vz486_mister_sim --enter-at 10000000

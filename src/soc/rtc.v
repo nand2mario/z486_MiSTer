@@ -76,18 +76,17 @@ wire rtc_clock_running = ~(crb_freeze || divider[2:1] == 2'b11);
 wire rtc_update_in_progress = rtc_clock_running && second_major <= 13'd1;
 wire rtc_second_update = rtc_clock_running && ce_8192hz && second_major == 13'd0;
 
-reg [7:0] mgmt_ext_mem_lsb;
-reg [7:0] mgmt_ext_mem_msb;
-reg [7:0] mgmt_equipment;
-reg [15:0] mgmt_checksum;
+// HPS-written CMOS values the synthesized registers below are corrected
+// against. Like the CMOS RAM they hold configuration, not core state: a core
+// reset after the HPS wrote them must not clear them, or 2Eh/2Fh no longer
+// match 10h-2Dh and Windows 95's ESDI_506 falls back to compatibility mode.
+reg [7:0] mgmt_ext_mem_lsb = 8'h00;
+reg [7:0] mgmt_ext_mem_msb = 8'h3C;
+reg [7:0] mgmt_equipment = 8'h00;
+reg [15:0] mgmt_checksum = 16'd0;
 
 always @(posedge clk) begin
-	if(rst_n == 1'b0) begin
-		mgmt_ext_mem_lsb <= 8'h00;
-		mgmt_ext_mem_msb <= 8'h3C;
-		mgmt_equipment <= 8'h00;
-		mgmt_checksum <= 16'd0;
-	end else if(mgmt_write) begin
+	if(mgmt_write) begin
 		if(mgmt_address == 8'h17) mgmt_ext_mem_lsb <= mgmt_writedata;
 		if(mgmt_address == 8'h18) mgmt_ext_mem_msb <= mgmt_writedata;
 		if(mgmt_address == 8'h14) mgmt_equipment <= mgmt_writedata;

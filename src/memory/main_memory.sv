@@ -183,6 +183,17 @@ always @(posedge clk) begin
                     vga_busy <= 1;
                     vga_bcnt <= cpu_burstcount == 0 ? 3'd1 : cpu_burstcount[2:0];
                     state <= UNMAPPED_READ;
+                end else if (cpu_valid && vga_rgn && !cpu_write && cpu_burstcount > 8'd1) begin
+                    // A burst into the VGA window is an instruction-cache line
+                    // fill (data accesses there are single direct cycles),
+                    // usually a wrong-path prefetch. Complete it with all ones
+                    // like an unmapped read: one VGA_READ beat would leave the
+                    // fill waiting forever, and real VGA reads would load the
+                    // plane latches.
+                    vga_accepted <= 1;
+                    vga_busy <= 1;
+                    vga_bcnt <= cpu_burstcount[2:0];
+                    state <= UNMAPPED_READ;
                 end else if (cpu_valid && vga_rgn) begin
                     vga_accepted <= 1;
                     vga_busy <= 1;

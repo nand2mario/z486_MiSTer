@@ -1,3 +1,4 @@
 obj_dir/
 ucode.hex
 waveform.fst
+obj_dir_*/

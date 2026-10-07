@@ -126,6 +126,7 @@ localparam CONF_STR = {
 	"P1O4,VSync,60Hz,Variable;",
 	"P1O5,16/24bit mode,BGR,RGB;",
 	"P1O6,16bit format,1555,565;",
+	"P1oDE,Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1oM,Border,Yes,No;",
 	"P1-;",
 	"P1oP,FM mode,OPL3,OPL2 compatibility;",
@@ -136,22 +137,25 @@ localparam CONF_STR = {
 	"P1OP,MT32 Volume Ctl,MIDI,Line-In;",
 	"-;",
 	"P2,Hardware;",
-	"P2O89,CPU Speed,Full,56 MHz,30 MHz,15 MHz;",
-	"P2-;",
-	"P2oTU,RAM Size,16MB,32MB,64MB,128MB;", // Lowercase 'o' maps T/U to status[62:61].
-	"P2-;",
 	"P2o01,Boot 1st,Floppy/Hard Disk,Floppy,Hard Disk,CD-ROM;",
 	"P2o23,Boot 2nd,NONE,Floppy,Hard Disk,CD-ROM;",
 	"P2o45,Boot 3rd,NONE,Floppy,Hard Disk,CD-ROM;",
 	"P2-;",
 	"P2o6,IDE 1-0 CD Hot-Swap,Yes,No;",
 	"P2o7,IDE 1-1 CD Hot-Swap,No,Yes;",
-    "P2-;",
-    "P2OCE,Joystick Type,2 Buttons,4 Buttons,Gravis Pro,None,CH Flightst., Thrustmaster;",
-    "P2oFG,Joystick Mode,2 Joysticks,2 Sticks,2 Wheels,4-axes Wheel;",
-    "P2oQR,Joystick Axes,Timed,Count 8+141,Count 0+256,Count 6+256;",
-    "P2oH,Joystick 1,Enabled,Disabled;",
-    "P2oI,Joystick 2,Enabled,Disabled;",
+	"P2-;",
+	"P2oTU,RAM Size,64MB,128MB,16MB,32MB;", // Lowercase 'o' maps T/U to status[62:61].
+	"P2-;",
+	"P2O89,CPU Speed,Full,56 MHz,30 MHz,15 MHz;",
+	"P2O[96],L1 Cache,On,Off;",
+	"P2O[97],x87 FPU,On,Off (at reset);",
+	"P2O[95],CPU Pipeline,Fast,Compatible;",
+	"P2-;",
+  "P2OCE,Joystick Type,2 Buttons,4 Buttons,Gravis Pro,None,CH Flightst., Thrustmaster;",
+	"P2oFG,Joystick Mode,2 Joysticks,2 Sticks,2 Wheels,4-axes Wheel;",
+	"P2oQR,Joystick Axes,Timed,Count 8+141,Count 0+256,Count 6+256;",
+	"P2oH,Joystick 1,Enabled,Disabled;",
+	"P2oI,Joystick 2,Enabled,Disabled;",
 	"h0P3,MT32-pi;",
 	"h0P3-;",
 	"h0P3O[85],Use MT32-pi,Yes,No;",
@@ -399,7 +403,9 @@ wire        ioctl_rd;
 wire [31:0] ioctl_file_ext;
 wire [15:0] sdram_sz;
 wire [1:0] detected_ram_size = |sdram_sz[1:0] ? sdram_sz[1:0] : 2'd1;
-wire [1:0] selected_ram_size = status[62:61];
+// RAM Size lists 64MB first so a cleared status (no saved config) gives
+// 64MB; the option index is the 0-3 = 16/32/64/128MB size code plus 2.
+wire [1:0] selected_ram_size = status[62:61] + 2'd2;
 wire [1:0] configured_ram_size = selected_ram_size > detected_ram_size
                                ? detected_ram_size : selected_ram_size;
 wire [64:0] rtc;
@@ -782,6 +788,9 @@ system #(
 	.ram_size            (configured_ram_size),
 	.uma_ram             (1'b0),
 	.cpu_speed_osd      (cpu_speed_osd),
+	.fast_off           (status[95]),
+	.cache_off          (status[96]),
+	.x87_off            (status[97]),
 	.syscfg              (),
 
 	.video_ce            (core_ce_pixel),
@@ -1091,7 +1100,7 @@ video_freak video_freak
 	.ARY                (ary_i),
 	.CROP_SIZE          (12'd0),
 	.CROP_OFF           (5'd0),
-	.SCALE              (3'd0)
+	.SCALE              ({1'b0, status[46:45]})
 );
 
 assign CLK_VIDEO     = clk_sys;

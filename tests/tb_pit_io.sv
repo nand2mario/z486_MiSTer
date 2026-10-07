@@ -40,6 +40,7 @@ module tb_pit_io;
         .ide_writedata(),
         .ide_readdata(32'h0),
         .ide_32(),
+        .ide_hold(1'b0),
         .direct_readdata(8'hff),
         .direct_handled(1'b0)
     );

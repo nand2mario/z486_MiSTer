@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Switch z486 MiSTer Quartus build profiles.
 
-The profile controls two things that are otherwise easy to mix up:
+The profile controls three things that are otherwise easy to mix up:
 
 * the generated main PLL files under rtl/
 * the top-level CLOCK_RATE_HZ localparam
@@ -11,6 +11,7 @@ The profile controls two things that are otherwise easy to mix up:
 from __future__ import annotations
 
 import argparse
+import filecmp
 import re
 import shutil
 import subprocess
@@ -205,6 +206,31 @@ def apply_profile(profile: Profile, dry_run: bool) -> None:
     print(f"Applied {profile.name}: {profile.pll_summary}")
 
 
+def profile_mismatches(profile: Profile, project_dir: Path = PROJECT_DIR) -> list[str]:
+    """The parts of project_dir that are not the profile's: the qsf settings
+    block (marker included), the PLL files, and CLOCK_RATE_HZ."""
+    problems = []
+    qsf = project_dir / QSF.name
+    # The fitter seed is the sweep's variable, not part of the profile: a
+    # release qsf records the seed it was picked from.
+    text = re.sub(r"^(set_global_assignment -name SEED) \d+$",
+                  lambda m: f"{m.group(1)} {dict(profile.assignments).get('SEED', '1')}",
+                  qsf.read_text(), flags=re.MULTILINE)
+    if insert_profile_qsf_block(remove_managed_qsf_content(text), profile) != text:
+        problems.append(f"{qsf.name}: settings block is not the {profile.name} profile's")
+    for rel in PLL_FILES:
+        if not filecmp.cmp(project_dir / "profiles" / profile.name / rel, project_dir / rel,
+                           shallow=False):
+            problems.append(f"{rel}: not the {profile.name} PLL ({profile.pll_summary})")
+    match = re.search(r"^localparam[ \t]+CLOCK_RATE_HZ[ \t]*=[ \t]*([0-9_]+);",
+                      (project_dir / TOP.name).read_text(), re.MULTILINE)
+    rate = int(match.group(1).replace("_", "")) if match else None
+    if rate != profile.clock_rate_hz:
+        problems.append(f"{TOP.name}: CLOCK_RATE_HZ is {rate}, the {profile.name} profile "
+                        f"needs {format_clock_rate(profile.clock_rate_hz)}")
+    return problems
+
+
 def detect_active_profile() -> str | None:
     qsf_text = QSF.read_text()
     match = re.search(r"# Active profile: (\w+)", qsf_text)
@@ -222,7 +248,8 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("profile", nargs="?", choices=sorted(PROFILES), help="profile to apply")
     parser.add_argument("--list", action="store_true", help="list available profiles")
-    parser.add_argument("--show", action="store_true", help="show the currently recorded active profile")
+    parser.add_argument("--show", action="store_true",
+                        help="show the active profile and check the tree matches it (exit 1 if not)")
     parser.add_argument("--dry-run", action="store_true", help="print changes without writing files")
     parser.add_argument("--compile", action="store_true", help="run quartus_sh after applying the profile")
     args = parser.parse_args(argv)
@@ -238,6 +265,13 @@ def main(argv: list[str]) -> int:
             print("No active build_profile.py profile marker in z486_mister.qsf")
         else:
             print(f"Active profile marker: {active} ({PROFILES[active].pll_summary})")
+            problems = profile_mismatches(PROFILES[active])
+            for problem in problems:
+                print(f"  MISMATCH {problem}")
+            if problems:
+                print(f"Run ./build_profile.py {active} to make the tree consistent.")
+                return 1
+            print("  qsf settings, PLL files and CLOCK_RATE_HZ match")
         return 0
 
     if args.profile is None:

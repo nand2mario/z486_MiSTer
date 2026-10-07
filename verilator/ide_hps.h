@@ -50,8 +50,13 @@ public:
     void tick(Vz486_mister_sim& tb);
     void save(std::ostream& out) const;
     void load(std::istream& in);
+    // A checkpoint from before image paths: name the image's file (if its
+    // size matches) so later checkpoints save only the sectors that differ.
+    void adopt_image_path(const std::string& path);
 
 private:
+    void save_image(std::ostream& out) const;
+    void load_image(std::istream& in);
     enum State {
         INITIAL,
         IDLE,
@@ -85,7 +90,8 @@ private:
     void handle_packet();
     void prepare_cdrom_read();
     void send_packet_data(std::vector<uint8_t> data);
-    void finish_packet(uint8_t sense_key = 0, uint8_t asc = 0, uint8_t ascq = 0);
+    void finish_packet(uint8_t sense_key = 0, uint8_t asc = 0, uint8_t ascq = 0,
+                       uint8_t extra_status = 0);
     void set_geometry(uint16_t sectors, uint16_t heads);
     void update_identify();
     uint32_t get_lba() const;
@@ -99,6 +105,7 @@ private:
     HpsIdeDrive drive_;
     std::vector<uint8_t> image_;
     std::string image_name_;
+    std::string image_path_;      // the image file; a checkpoint holds only sectors that differ
     uint16_t* sector_words_ = nullptr;
     uint32_t sector_ = 0;
     uint32_t sector_count_ = 0;

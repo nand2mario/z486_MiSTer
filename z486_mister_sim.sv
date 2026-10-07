@@ -119,7 +119,36 @@ module z486_mister_sim (
 	output [23:0] dbg_zsst_buffer_size,
 	output [15:0] dbg_zsst_stride,
 	output  [9:0] dbg_zsst_width,
-	output  [9:0] dbg_zsst_height
+	output  [9:0] dbg_zsst_height,
+
+	// Co-simulation taps (verilator/cosim.cpp): the CPU's issue stream, its
+	// data requests at acceptance (program order), read completions, direct
+	// stores, and DMA writes into guest memory.
+	output        cosim_cpu_reset_n,
+	output        cosim_issue,
+	output [31:0] cosim_issue_eip,
+	output [31:0] cosim_ecx,
+	output [31:0] cosim_eflags,
+	output        cosim_a20,
+	output        cosim_dreq_acc,
+	output        cosim_dreq_write,
+	output [31:0] cosim_dreq_addr,
+	output  [3:0] cosim_dreq_be,
+	output [31:0] cosim_dreq_wdata,
+	output [31:0] cosim_dreq_wdata_direct,
+	output  [4:0] cosim_dreq_kind,      // {walker, vga, x87, inta, io}
+	output        cosim_drd_done,
+	output [31:0] cosim_drd_data,
+	output        cosim_fst_acc,
+	output [31:0] cosim_fst_addr,
+	output  [3:0] cosim_fst_be,
+	output [31:0] cosim_fst_wdata,
+	output        cosim_dma_wr,
+	output [31:0] cosim_dma_addr,
+	output  [3:0] cosim_dma_be,
+	output [31:0] cosim_dma_wdata,
+	output        cosim_bus_quiet,      // no CPU bus cycle requested, outstanding or buffered
+	output [255:0] cosim_gprs           // EDI..EAX as an issuing instruction reads them
 );
 
 // The simulation build overrides this parameter for speed-sensitive testing.
@@ -576,9 +605,12 @@ system #(
 	.dbg_cpu_din_z       (dbg_cpu_din_z),
 
 	.bootcfg             ({4'd0, status[2:1]}),
-	.ram_size            (status[62:61]),
+	.ram_size            (status[62:61] + 2'd2), // OSD index 0-3 = 64/128/16/32MB
 	.uma_ram             (1'b0),
 	.cpu_speed_osd      (cpu_speed_osd),
+	.fast_off           (1'b0),          // sim: +z486_fast_off / +z486_fast_toggle=N
+	.cache_off          (1'b0),          // sim: +z486_cache_off / +z486_cache_toggle=N
+	.x87_off            (1'b0),          // sim: +z486_x87_off
 	.syscfg              (syscfg),
 
 	.video_ce            (video_ce),
@@ -695,6 +727,7 @@ assign zsst_sim_host_req.be = zsst_host_byteenable;
 assign zsst_sim_host_req.write = zsst_host_write;
 assign zsst_host_readdata = zsst_sim_host_rsp.rdata;
 assign zsst_host_error = zsst_sim_host_rsp.error;
+
 assign dbg_zsst_video_active = zsst_sim_video_active;
 assign dbg_zsst_host_reads = zsst_sim_host_reads_r;
 assign dbg_zsst_host_writes = zsst_sim_host_writes_r;
@@ -971,5 +1004,105 @@ assign dbg_uart_byte = dbg_uart_byte_w;
 assign dbg_uart_we = dbg_uart_we_w;
 assign debug_bios_loaded_o = debug_bios_loaded;
 assign debug_first_instruction_o = debug_first_instruction;
+
+// Co-simulation taps (verilator/cosim_host.cpp).
+assign cosim_cpu_reset_n      = system_i.z486_cpu.reset_n;
+assign cosim_issue            = system_i.z486_cpu.i_issue && !system_i.z486_cpu.stall;
+assign cosim_issue_eip        = system_i.z486_cpu.EIP;
+assign cosim_ecx              = system_i.z486_cpu.data_unit_inst.gpr_capture_view[1];
+assign cosim_eflags           = system_i.z486_cpu.eflags_fwd;
+assign cosim_a20              = system_i.z486_cpu.a20_enable;
+assign cosim_dreq_acc         = system_i.z486_cpu.dcache_req_valid && system_i.z486_cpu.dcache_req_accepted;
+assign cosim_dreq_write       = system_i.z486_cpu.dcache_req_write;
+assign cosim_dreq_addr        = system_i.z486_cpu.dcache_req_phys_addr_raw;
+assign cosim_dreq_be          = system_i.z486_cpu.dcache_req_be;
+assign cosim_dreq_wdata       = system_i.z486_cpu.dcache_req_wdata;
+assign cosim_dreq_wdata_direct = system_i.z486_cpu.dcache_direct_wdata;
+assign cosim_dreq_kind        = {system_i.z486_cpu.paging_inst.walk_biu_pending,
+                                 system_i.z486_cpu.dcache_req_is_vga_mem,
+                                 system_i.z486_cpu.dcache_req_is_x87,
+                                 system_i.z486_cpu.dcache_req_is_inta,
+                                 system_i.z486_cpu.dcache_req_is_io};
+assign cosim_drd_done         = system_i.z486_cpu.dcache_read_complete;
+assign cosim_drd_data         = system_i.z486_cpu.dcache_rdata;
+assign cosim_fst_acc          = system_i.z486_cpu.fast_store_valid && system_i.z486_cpu.fast_store_accepted;
+assign cosim_fst_addr         = system_i.z486_cpu.memory_inst.fast_store_phys_addr_raw;
+assign cosim_fst_be           = system_i.z486_cpu.fast_store_be;
+assign cosim_fst_wdata        = system_i.z486_cpu.fast_store_wdata;
+assign cosim_dma_wr           = system_i.ext_mem1_valid && system_i.ext_mem1_write && system_i.ext_mem1_ready;
+assign cosim_dma_addr         = system_i.ext_mem1_addr;
+assign cosim_dma_be           = system_i.ext_mem1_be;
+assign cosim_dma_wdata        = system_i.ext_mem1_din;
+assign cosim_gprs             = {system_i.z486_cpu.data_unit_inst.gpr_capture_view[7],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[6],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[5],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[4],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[3],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[2],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[1],
+                                 system_i.z486_cpu.data_unit_inst.gpr_capture_view[0]};
+assign cosim_bus_quiet        = !system_i.z486_cpu.valid &&
+                                system_i.z486_cpu.memory_inst.dcache_stores_drained &&
+                                !system_i.z486_cpu.memory_inst.dcache_read_pending &&
+                                !system_i.z486_cpu.memory_inst.icache_read_pending &&
+                                !system_i.z486_cpu.memory_inst.direct_rd_pending &&
+                                !system_i.z486_cpu.paging_inst.walk_biu_pending;
+
+`ifdef VERILATOR
+// Portable snapshots (verilator/snapshot.cpp): the co-simulation reference's
+// architectural state, written into z486 while it is fresh from reset. Word
+// indices as in cosim_host.cpp (arch_word): 0-7 EAX..EDI, 8 EIP, 9 EFLAGS,
+// 10 CR0, 11 CR2, 12 CR3, 13 DR6, 14 DR7, 15/16 GDTR base/limit, 17/18 IDTR
+// base/limit, then per segment (ES CS SS DS FS GS TR LDTR) the selector, the
+// base and {A, G, D/B, P, DPL, S, type, raw limit[19:0]}.
+import "DPI-C" function int unsigned cosim_arch_word(input int idx);
+export "DPI-C" task cosim_load_arch;
+task cosim_load_arch;
+	z486_pkg::seg_desc_t d;
+	logic [31:0] a;
+	system_i.z486_cpu.data_unit_inst.eax = cosim_arch_word(0);
+	system_i.z486_cpu.data_unit_inst.ecx = cosim_arch_word(1);
+	system_i.z486_cpu.data_unit_inst.edx = cosim_arch_word(2);
+	system_i.z486_cpu.data_unit_inst.ebx = cosim_arch_word(3);
+	system_i.z486_cpu.data_unit_inst.esp = cosim_arch_word(4);
+	system_i.z486_cpu.data_unit_inst.ebp = cosim_arch_word(5);
+	system_i.z486_cpu.data_unit_inst.esi = cosim_arch_word(6);
+	system_i.z486_cpu.data_unit_inst.edi = cosim_arch_word(7);
+	system_i.z486_cpu.EIP = cosim_arch_word(8);
+	system_i.z486_cpu.data_unit_inst.eflags = cosim_arch_word(9);
+	system_i.z486_cpu.CR0 = cosim_arch_word(10);
+	system_i.z486_cpu.CR2 = cosim_arch_word(11);
+	system_i.z486_cpu.CR3 = cosim_arch_word(12);
+	system_i.z486_cpu.DR6 = cosim_arch_word(13);
+	system_i.z486_cpu.DR7 = cosim_arch_word(14);
+	system_i.z486_cpu.seg_unit.gdt_base = cosim_arch_word(15);
+	system_i.z486_cpu.seg_unit.gdt_limit = cosim_arch_word(16);
+	system_i.z486_cpu.seg_unit.idt_base = cosim_arch_word(17);
+	system_i.z486_cpu.seg_unit.idt_limit = cosim_arch_word(18);
+	system_i.z486_cpu.ES = cosim_arch_word(19);
+	system_i.z486_cpu.CS = cosim_arch_word(22);
+	system_i.z486_cpu.SS = cosim_arch_word(25);
+	system_i.z486_cpu.DS = cosim_arch_word(28);
+	system_i.z486_cpu.FS = cosim_arch_word(31);
+	system_i.z486_cpu.GS = cosim_arch_word(34);
+	system_i.z486_cpu.TR = cosim_arch_word(37);
+	system_i.z486_cpu.LDTR = cosim_arch_word(40);
+	for (int i = 0; i < 8; i++) begin
+		a = cosim_arch_word(21 + 3 * i);
+		d.base = cosim_arch_word(20 + 3 * i);
+		d.limit = a[19:0];
+		d.seg_type = a[23:20];
+		d.S = a[24];
+		d.DPL = a[26:25];
+		d.P = a[27];
+		d.D_B = a[28];
+		d.G = a[29];
+		d.A = a[30];
+		system_i.z486_cpu.seg_unit.desc_cache[i] = d;
+	end
+	// Fetch resumes at CS:EIP (a linear address, as after a far jump).
+	system_i.z486_cpu.prefetch_inst.pf_fetch_addr = cosim_arch_word(20 + 3 * 1) + cosim_arch_word(8);
+endtask
+`endif
 
 endmodule

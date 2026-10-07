@@ -22,6 +22,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import build_profile  # noqa: E402
+
 
 PROJECT = "z486_mister"
 REVISION = "z486_mister"
@@ -32,6 +35,10 @@ CLK_SYS_TOP_SETUP_TCL = f"{REVISION}.clk_sys_top_setup.tcl"
 # timing_families.py; the top-N full-path report is usually one family.
 CLK_SYS_ENDPOINTS_RPT = f"{REVISION}.clk_sys_endpoints.rpt"
 ENDPOINT_PATHS = 1000
+# The same worst-per-endpoint paths with cell detail, for the top endpoints:
+# shows the logic of families that never reach the top-N full-path report.
+CLK_SYS_ENDPOINTS_DETAIL_RPT = f"{REVISION}.clk_sys_endpoints_detail.rpt"
+ENDPOINT_DETAIL_PATHS = 300
 REQUIRED_BUILD_PROFILE = "production"
 
 
@@ -87,6 +94,19 @@ def require_production_profile(qsf: Path) -> None:
         raise SystemExit(
             "seed_sweep.py only runs with the production build profile; "
             f"{state}. Run ./build_profile.py production first."
+        )
+    require_consistent_profile(qsf.parent, REQUIRED_BUILD_PROFILE)
+
+
+def require_consistent_profile(project_dir: Path, name: str) -> None:
+    """The marker alone is not enough: the PLL files and CLOCK_RATE_HZ must
+    be the profile's too, or the sweep builds another clock rate."""
+    problems = build_profile.profile_mismatches(build_profile.PROFILES[name], project_dir)
+    if problems:
+        raise SystemExit(
+            f"{project_dir} is not a consistent {name} tree:\n  "
+            + "\n  ".join(problems)
+            + f"\nRun ./build_profile.py {name} first."
         )
 
 
@@ -171,6 +191,13 @@ def write_clk_sys_top_setup_tcl(path: Path, npaths: int) -> None:
                     "-detail summary "
                     f"-file output_files/{CLK_SYS_ENDPOINTS_RPT} "
                     "-panel_name {clk_sys Endpoint Setup Paths}"
+                ),
+                (
+                    "report_timing -setup "
+                    f"-from_clock $clk -to_clock $clk -npaths {ENDPOINT_DETAIL_PATHS} -nworst 1 "
+                    "-detail full_path "
+                    f"-file output_files/{CLK_SYS_ENDPOINTS_DETAIL_RPT} "
+                    "-panel_name {clk_sys Endpoint Setup Path Detail}"
                 ),
                 "project_close",
                 "",
@@ -432,6 +459,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--start", type=int, default=1, help="first seed, inclusive")
     parser.add_argument("--end", type=int, default=20, help="last seed, inclusive")
+    parser.add_argument(
+        "-s", "--seeds-first", nargs="+", default=[], metavar="SEEDS",
+        help='seeds to build first, in this order, e.g. -s "4 9 13 15"; '
+             "the rest of --start..--end follow (a seed outside the range is added)",
+    )
     parser.add_argument("--project-dir", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--out", type=Path, default=None, help="sweep output directory")
     parser.add_argument("--no-clean", action="store_true", help="do not run quartus_sh --clean before each seed")
@@ -468,6 +500,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def order_seeds(start: int, end: int, first: list[str]) -> list[int]:
+    """--start..--end with the --seeds-first seeds moved to the front."""
+    front: list[int] = []
+    for word in " ".join(first).replace(",", " ").split():
+        if not word.isdigit():
+            raise SystemExit(f"--seeds-first: {word!r} is not a seed number")
+        if int(word) not in front:
+            front.append(int(word))
+    return front + [seed for seed in range(start, end + 1) if seed not in front]
+
+
 def main() -> int:
     args = parse_args()
     processors_per_job = resolve_processors_per_job(args.jobs, args.processors_per_job)
@@ -486,7 +529,9 @@ def main() -> int:
     backup_qsf.write_text(original_qsf)
 
     results: list[Result] = []
-    seeds = list(range(args.start, args.end + 1))
+    seeds = order_seeds(args.start, args.end, args.seeds_first)
+    if args.seeds_first:
+        print_event("Seed order: " + " ".join(str(seed) for seed in seeds))
     try:
         if args.jobs <= 1 and args.profile == REQUIRED_BUILD_PROFILE and not args.no_x87:
             for seed in seeds:
@@ -530,6 +575,7 @@ def main() -> int:
                 if rc != 0:
                     raise SystemExit(f"build_profile.py {args.profile} failed in the snapshot")
                 print_event(f"Applied build profile {args.profile!r} to the snapshot")
+            require_consistent_profile(snapshot_dir, args.profile)
             if args.no_x87:
                 top = snapshot_dir / "z486_mister.sv"
                 text, n = re.subn(r"^localparam[ \t]+ENABLE_X87[ \t]*=[ \t]*1'b1;",

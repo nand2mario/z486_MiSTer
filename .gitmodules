@@ -2,3 +2,7 @@
 	path = src/z486
 	url = https://github.com/nand2mario/z486.git
 	branch = main
+[submodule "verilator/cosim/86Box"]
+	path = verilator/cosim/86Box
+	url = https://github.com/nand2mario/86Box.git
+	branch = z486-cosim

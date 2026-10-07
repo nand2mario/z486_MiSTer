@@ -6,6 +6,8 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <filesystem>
+#include <sys/stat.h>
 
 using std::cout;
 using std::ifstream;
@@ -113,7 +115,7 @@ HpsIde::HpsIde(uint8_t id, uint16_t base_addr) : id_(id), base_(base_addr) {}
 
 void HpsIde::save(std::ostream& out) const {
     const uint32_t magic = 0x48494445; // HIDE
-    const uint32_t version = 2;
+    const uint32_t version = 3;
     uint32_t state = static_cast<uint32_t>(state_);
     uint32_t next_state = static_cast<uint32_t>(next_state_);
     uint64_t sector_words_offset = std::numeric_limits<uint64_t>::max();
@@ -134,7 +136,7 @@ void HpsIde::save(std::ostream& out) const {
     write_pod(out, next_state);
     write_regs(out, regs_);
     write_drive(out, drive_);
-    write_vector_u8(out, image_);
+    save_image(out);
     write_string(out, image_name_);
     write_pod(out, sector_words_offset);
     write_pod(out, sector_);
@@ -168,7 +170,7 @@ void HpsIde::load(std::istream& in) {
 
     read_pod(in, magic);
     read_pod(in, version);
-    if (magic != 0x48494445 || (version != 1 && version != 2)) {
+    if (magic != 0x48494445 || version < 1 || version > 3) {
         throw std::runtime_error("bad HpsIde checkpoint");
     }
 
@@ -180,7 +182,10 @@ void HpsIde::load(std::istream& in) {
     next_state_ = static_cast<State>(next_state);
     read_regs(in, regs_);
     read_drive(in, drive_);
-    read_vector_u8(in, image_);
+    if (version >= 3)
+        load_image(in);
+    else
+        read_vector_u8(in, image_);
     read_string(in, image_name_);
     read_pod(in, sector_words_offset);
     read_pod(in, sector_);
@@ -214,6 +219,91 @@ void HpsIde::load(std::istream& in) {
     }
 }
 
+// The image as the sectors that differ from its file (the sim never writes
+// the file), with the file's size and modification time to check on load.
+// Without the file, the whole image.
+static string fs_absolute(const string& path) {
+    std::error_code ec;
+    const auto p = std::filesystem::absolute(path, ec);
+    return ec ? path : p.string();
+}
+
+static bool file_identity(const string& path, uint64_t& size, int64_t& mtime) {
+    struct stat st;
+    if (path.empty() || stat(path.c_str(), &st) != 0) return false;
+    size = static_cast<uint64_t>(st.st_size);
+    mtime = static_cast<int64_t>(st.st_mtime);
+    return true;
+}
+
+void HpsIde::save_image(std::ostream& out) const {
+    write_string(out, image_path_);
+    uint64_t size = 0;
+    int64_t mtime = 0;
+    std::vector<uint8_t> base;
+    if (file_identity(image_path_, size, mtime) && size == image_.size()) {
+        ifstream f(image_path_, ios::binary);
+        base.resize(size);
+        f.read(reinterpret_cast<char*>(base.data()), static_cast<std::streamsize>(size));
+        if (!f) base.clear();
+    }
+    const uint8_t as_diff = base.empty() ? 0 : 1;
+    write_pod(out, as_diff);
+    if (!as_diff) {
+        write_vector_u8(out, image_);
+        return;
+    }
+    write_pod(out, size);
+    write_pod(out, mtime);
+    std::vector<uint32_t> dirty;
+    for (size_t s = 0; s * 512 < image_.size(); ++s)
+        if (memcmp(&image_[s * 512], &base[s * 512], std::min<size_t>(512, image_.size() - s * 512)))
+            dirty.push_back(static_cast<uint32_t>(s));
+    write_pod(out, static_cast<uint64_t>(dirty.size()));
+    for (uint32_t s : dirty) {
+        write_pod(out, s);
+        out.write(reinterpret_cast<const char*>(&image_[size_t(s) * 512]),
+                  std::min<size_t>(512, image_.size() - size_t(s) * 512));
+    }
+}
+
+void HpsIde::load_image(std::istream& in) {
+    read_string(in, image_path_);
+    uint8_t as_diff = 0;
+    read_pod(in, as_diff);
+    if (!as_diff) {
+        read_vector_u8(in, image_);
+        return;
+    }
+    uint64_t size = 0, now_size = 0, count = 0;
+    int64_t mtime = 0, now_mtime = 0;
+    read_pod(in, size);
+    read_pod(in, mtime);
+    if (!file_identity(image_path_, now_size, now_mtime) || now_size != size)
+        throw std::runtime_error("checkpoint disk base " + image_path_ + " is missing or resized");
+    if (now_mtime != mtime)
+        std::cerr << "IDE" << static_cast<int>(id_) << ": warning: " << image_path_
+             << " changed since the checkpoint\n";
+    ifstream f(image_path_, ios::binary);
+    image_.resize(size);
+    f.read(reinterpret_cast<char*>(image_.data()), static_cast<std::streamsize>(size));
+    if (!f) throw std::runtime_error("cannot read " + image_path_);
+    read_pod(in, count);
+    for (uint64_t k = 0; k < count; ++k) {
+        uint32_t s = 0;
+        read_pod(in, s);
+        in.read(reinterpret_cast<char*>(&image_[size_t(s) * 512]),
+                std::min<size_t>(512, image_.size() - size_t(s) * 512));
+    }
+}
+
+void HpsIde::adopt_image_path(const string& path) {
+    uint64_t size = 0;
+    int64_t mtime = 0;
+    if (image_path_.empty() && file_identity(path, size, mtime) && size == image_.size())
+        image_path_ = fs_absolute(path);
+}
+
 bool HpsIde::open(const string& path) {
     ifstream f(path, ios::binary);
     if (!f) return false;
@@ -231,6 +321,7 @@ bool HpsIde::open(const string& path) {
     drive_.total_sectors = static_cast<uint32_t>(size / 512);
     size_t slash = path.find_last_of("/\\");
     image_name_ = (slash == string::npos) ? path : path.substr(slash + 1);
+    image_path_ = fs_absolute(path);
     set_geometry(63, 16);
     return true;
 }
@@ -253,6 +344,7 @@ bool HpsIde::open_cdrom(const string& path) {
     drive_.total_sectors = static_cast<uint32_t>(size / 2048);
     size_t slash = path.find_last_of("/\\");
     image_name_ = (slash == string::npos) ? path : path.substr(slash + 1);
+    image_path_ = fs_absolute(path);
     update_identify();
     return true;
 }
@@ -425,7 +517,7 @@ void HpsIde::send_packet_data(std::vector<uint8_t> data) {
     state_ = PACKET_SEND;
 }
 
-void HpsIde::finish_packet(uint8_t sense_key, uint8_t asc, uint8_t ascq) {
+void HpsIde::finish_packet(uint8_t sense_key, uint8_t asc, uint8_t ascq, uint8_t extra_status) {
     sense_key_ = sense_key;
     sense_asc_ = asc;
     sense_ascq_ = ascq;
@@ -433,7 +525,7 @@ void HpsIde::finish_packet(uint8_t sense_key, uint8_t asc, uint8_t ascq) {
     regs_.pkt_io_size = 0;
     regs_.error = static_cast<uint8_t>(sense_key << 4);
     regs_.status = ATA_STATUS_RDY | ATA_STATUS_IRQ |
-                   (sense_key ? ATA_STATUS_ERR : 0);
+                   (sense_key ? ATA_STATUS_ERR : 0) | extra_status;
     state_ = SET_REGS;
     next_state_ = IDLE;
 }
@@ -495,13 +587,16 @@ void HpsIde::handle_packet() {
     case 0x00: // TEST UNIT READY
     case 0x1B: // START STOP UNIT
     case 0x1E: // PREVENT/ALLOW MEDIUM REMOVAL
-    case 0x2B: // SEEK(10)
     case 0x35: // SYNCHRONIZE CACHE
     case 0x45: // PLAY AUDIO(10), accepted without audio rendering
     case 0x47: // PLAY AUDIO MSF
     case 0x4B: // PAUSE/RESUME
     case 0x4E: // STOP PLAY/SCAN
         finish_packet();
+        break;
+
+    case 0x2B: // SEEK(10): seek complete (DSC), as Main_MiSTer's ide_cdrom.cpp
+        finish_packet(0, 0, 0, ATA_STATUS_DSC);
         break;
 
     case 0x03: { // REQUEST SENSE
