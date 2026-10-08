@@ -15,7 +15,7 @@ module system (
 	input  [13:0] joystick_dig_2,
 	input  [15:0] joystick_ana_1,
 	input  [15:0] joystick_ana_2,
-	input   [1:0] joystick_mode,
+	input   [2:0] joystick_mode,
 	input   [1:0] joystick_timed,
 
     input  [15:0] mgmt_address,
