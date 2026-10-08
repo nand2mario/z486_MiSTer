@@ -108,6 +108,7 @@ localparam ICACHE_SET_BITS = 7;   // icache size: 8 = 16KB, 7 = 8KB
 localparam ENABLE_X87 = 1'b1;     // Experimental x87 sidecar build
 localparam ENABLE_CMS = 1'b0;     // Save about 1K ALMs; OPL2/3 remains available.
 
+`include "build_id.v"
 localparam CONF_STR = {
 	"Z486;UART115200:4000000 (Turbo 115200),MIDI;",
 	"S0,IMGIMAVFD,Floppy A:;",
@@ -181,7 +182,8 @@ localparam CONF_STR = {
 	"MT32-pi: MT-32 v1,",
 	"MT32-pi: MT-32 v2,",
 	"MT32-pi: CM-32L,",
-	"MT32-pi: Unknown mode;"
+	"MT32-pi: Unknown mode;",
+	"V,v",`BUILD_DATE
 };
 
 wire        clk_sys;
