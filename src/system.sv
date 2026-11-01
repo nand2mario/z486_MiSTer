@@ -105,6 +105,17 @@ module system (
     output        dbg_uart_we,
     output        mpu_uart_tx,
 
+    // COM3 (3E8h, IRQ4)
+    input  [31:0] uart_speed,
+    input         com3_rx,
+    output        com3_tx,
+    input         com3_cts_n,
+    input         com3_dsr_n,
+    input         com3_dcd_n,
+    input         com3_ri_n,
+    output        com3_rts_n,
+    output        com3_dtr_n,
+
     // SignalTap anchors for the boot-ROM / reset-vector path.
     output [31:0] dbg_sd_avm_address,
     output [31:0] dbg_sd_avm_writedata,
@@ -410,6 +421,7 @@ reg         fm_cs;
 reg         sb_cs;
 reg         uart1_cs;
 reg         uart2_cs;
+reg         uart3_cs;
 reg         mpu_cs;
 reg         vga_b_cs;
 reg         vga_c_cs;
@@ -437,6 +449,7 @@ wire  [7:0] ps2_readdata;
 wire  [7:0] rtc_readdata;
 wire  [7:0] uart1_readdata;
 wire  [7:0] uart2_readdata;
+wire  [7:0] uart3_readdata;
 wire  [7:0] mpu_readdata;
 wire  [7:0] dma_io_readdata;
 wire  [7:0] pic_readdata;
@@ -849,6 +862,7 @@ wire [7:0] iobus_readdata8 =
 	( rtc_cs                                 ) ? rtc_readdata      :
 	( sb_cs|fm_cs                            ) ? sound_readdata    :
 	( mpu_cs                                 ) ? mpu_readdata      :
+	( uart3_cs                               ) ? uart3_readdata    :
 	( joy_cs                                 ) ? joystick_readdata :
 	( vga_b_cs|vga_c_cs|vga_d_cs             ) ? vga_io_readdata   :
 	( debug_port_cs                          ) ? 8'hE9             :
@@ -934,6 +948,7 @@ always @(posedge clk_sys) begin
 		sb_cs         <= ({iobus_address_next[15:4], 4'd0} == 16'h0220);
 		uart1_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h03F8); // COM1
 		uart2_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h02F8); // COM2
+		uart3_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h03E8); // COM3
 		mpu_cs        <= ({iobus_address_next[15:1], 1'd0} == 16'h0330); // MPU-401 330/331
 		vga_b_cs      <= ({iobus_address_next[15:4], 4'd0} == 16'h03B0);
 		vga_c_cs      <= ({iobus_address_next[15:4], 4'd0} == 16'h03C0);
@@ -1892,6 +1907,28 @@ uart_tx_V2 mpu_uart_tx_i
 
 defparam mpu_uart_tx_i.clk_freq  = SYS_FREQ;
 defparam mpu_uart_tx_i.uart_freq = 31250;
+
+uart16550 #(.CLK_HZ(SYS_FREQ)) com3
+(
+    .clk          (clk_sys),
+    .reset        (reset),
+    .uart_speed   (uart_speed),
+    .io_address   (iobus_address[2:0]),
+    .io_read      (iobus_read),
+    .io_write     (iobus_write),
+    .io_cs        (uart3_cs),
+    .io_writedata (iobus_writedata_byte),
+    .io_readdata  (uart3_readdata),
+    .irq          (irq_4),
+    .rx           (com3_rx),
+    .tx           (com3_tx),
+    .cts_n        (com3_cts_n),
+    .dsr_n        (com3_dsr_n),
+    .dcd_n        (com3_dcd_n),
+    .ri_n         (com3_ri_n),
+    .rts_n        (com3_rts_n),
+    .dtr_n        (com3_dtr_n)
+);
 
 // Export debug byte for UART bridge to wrap as type 0x07
 wire bios_dbg_write = iobus_write && debug_port_cs;

@@ -593,6 +593,15 @@ system #(
 
 	.dbg_uart_byte       (dbg_uart_byte_w),
 	.dbg_uart_we         (dbg_uart_we_w),
+	.uart_speed          (32'd115200),
+	.com3_rx             (1'b1),
+	.com3_tx             (),
+	.com3_cts_n          (1'b1),
+	.com3_dsr_n          (1'b1),
+	.com3_dcd_n          (1'b1),
+	.com3_ri_n           (1'b1),
+	.com3_rts_n          (),
+	.com3_dtr_n          (),
 
 	.dbg_sd_avm_address  (dbg_sd_avm_address),
 	.dbg_sd_avm_writedata(dbg_sd_avm_writedata),

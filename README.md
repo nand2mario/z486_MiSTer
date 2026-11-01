@@ -31,6 +31,12 @@ the files as follows:
 Development and compatibility discussion is available in the
 [MiSTer FPGA forum thread](https://misterfpga.org/viewtopic.php?t=10667).
 
+## Serial port
+
+COM3 is a 16550A at `3E8h`, IRQ 4. It connects to the MiSTer UART when the core's UART connection is set to PPP, Modem or Console. At 115200 baud or below, the guest's divisor must match the configured speed. Faster link speeds act as turbo, so a guest setting of 115200 runs at the link speed. MIDI mode keeps the UART for MPU-401 output. MT32-pi on the user port and the PS/2 mouse (IRQ 12) work in every mode.
+
+To use the MiSTer virtual modem, set the UART connection to Modem and choose a baud rate, then configure your DOS communications program for COM3 (`3E8h`, IRQ 4) at that same rate. Modem mode uses the UART, so MidiLink MIDI output is unavailable while it is selected.
+
 ## Shared folders and CPU speed
 
 [MISTERFS](doc/misterfs.md) shares `/media/fat/games/Z486/shared` with DOS using the current ao486 driver. If using EMM386, reserve `CE00-CFFF` before loading the driver.

@@ -13,6 +13,15 @@ $(OBJ_DIR)/Vtb_misterfs_mailbox: tb_main_memory_svga.sv ../src/memory/main_memor
 	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/misterfs_mailbox \
 		--top-module tb_main_memory_svga -GENABLE_SHARED_MAILBOX=1 $^ -o ../Vtb_misterfs_mailbox
 
+.PHONY: test-uart
+test-uart: $(OBJ_DIR)/Vtb_uart16550
+	./$(OBJ_DIR)/Vtb_uart16550
+
+test: test-uart
+
+$(OBJ_DIR)/Vtb_uart16550: tb_uart16550.sv ../src/soc/uart16550.sv | $(OBJ_DIR)
+	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/uart16550 		--top-module tb_uart16550 $^ -o ../Vtb_uart16550
+
 .PHONY: test-speed
 test-speed: $(OBJ_DIR)/Vtb_cpu_throttle $(OBJ_DIR)/Vtb_sysctl_io
 	./$(OBJ_DIR)/Vtb_cpu_throttle
