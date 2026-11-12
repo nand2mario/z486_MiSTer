@@ -13,6 +13,15 @@ $(OBJ_DIR)/Vtb_misterfs_mailbox: tb_main_memory_svga.sv ../src/memory/main_memor
 	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/misterfs_mailbox \
 		--top-module tb_main_memory_svga -GENABLE_SHARED_MAILBOX=1 $^ -o ../Vtb_misterfs_mailbox
 
+.PHONY: test-uart
+test-uart: $(OBJ_DIR)/Vtb_uart16550
+	./$(OBJ_DIR)/Vtb_uart16550
+
+test: test-uart
+
+$(OBJ_DIR)/Vtb_uart16550: tb_uart16550.sv ../src/soc/uart16550.sv | $(OBJ_DIR)
+	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/uart16550 		--top-module tb_uart16550 $^ -o ../Vtb_uart16550
+
 .PHONY: test-speed
 test-speed: $(OBJ_DIR)/Vtb_cpu_throttle $(OBJ_DIR)/Vtb_sysctl_io
 	./$(OBJ_DIR)/Vtb_cpu_throttle
@@ -130,3 +139,12 @@ $(OBJ_DIR)/Vtb_sdram_size: tb_sdram_size.sv ../src/memory/sdram.v | $(OBJ_DIR)
 
 clean:
 	rm -rf $(OBJ_DIR)
+
+.PHONY: test-ne2000
+test-ne2000: $(OBJ_DIR)/Vtb_ne2000
+	./$(OBJ_DIR)/Vtb_ne2000
+
+test: test-ne2000
+
+$(OBJ_DIR)/Vtb_ne2000: tb_ne2000.sv ../src/soc/netbridge/netbridge.sv ../src/soc/netbridge/netbridge_ne2000.sv ../src/soc/netbridge/netbridge_ddram_arb.sv ../src/soc/netbridge/netbridge_dpram.sv | $(OBJ_DIR)
+	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/ne2000 		--top-module tb_ne2000 $^ -o ../Vtb_ne2000

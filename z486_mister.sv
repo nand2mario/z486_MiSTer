@@ -153,6 +153,8 @@ localparam CONF_STR = {
 	"P2O[97],x87 FPU,On,Off (at reset);",
 	"P2O[95],CPU Pipeline,Fast,Compatible;",
 	"P2-;",
+	"P2O[99:98],NE2000 Network,Off,300h IRQ 3,300h IRQ 9;",
+	"P2-;",
   "P2OCE,Joystick Type,2 Buttons,4 Buttons,Gravis Pro,None,CH Flightst., Thrustmaster;",
 	"P2oFG,Joystick Mode,2 Joysticks,2 Sticks,2 Wheels,4-axes Wheel;",
 	"P2oQR,Joystick Axes,Timed,Count 8+141,Count 0+256,Count 6+256;",
@@ -415,9 +417,14 @@ wire [64:0] rtc;
 wire [32:0] timestamp;
 wire [7:0]  uart_mode;
 wire [31:0] uart_speed;
+// Main_MiSTer modes: 1 = PPP/Modem, 2 = Console, 3+ = MIDI/MidiLink.
+wire        com3_mode = (uart_mode == 8'd1) || (uart_mode == 8'd2);
 wire        debug_uart_tx;
 wire        debug_uart_busy;
 wire        mpu_uart_tx;
+wire        com3_tx;
+wire        com3_rts_n;
+wire        com3_dtr_n;
 reg   [7:0] debug_uart_data;
 reg         debug_uart_wr;
 reg   [7:0] debug_uart_fifo [0:255];
@@ -766,6 +773,16 @@ system #(
 	.dbg_uart_byte       (core_dbg_uart_byte),
 	.dbg_uart_we         (core_dbg_uart_we),
    .mpu_uart_tx         (mpu_uart_tx),
+	.uart_speed          (uart_speed),
+	.com3_rx             (~com3_mode | UART_RXD),
+	.com3_tx             (com3_tx),
+	.com3_cts_n          (~com3_mode | UART_CTS),
+	.com3_dsr_n          (~com3_mode | UART_DSR),
+	.com3_dcd_n          (~com3_mode | UART_DSR),
+	.com3_ri_n           (1'b1),
+	.com3_rts_n          (com3_rts_n),
+	.com3_dtr_n          (com3_dtr_n),
+	.ne2000_mode         (status[99:98]),
 	.dbg_sd_avm_address  (),
 	.dbg_sd_avm_writedata(),
 	.dbg_sd_avm_write    (),
@@ -1189,11 +1206,11 @@ assign SD_CS         = 1'bz;
 assign DDRAM_CLK     = clk_sys;
 assign SDRAM_CLK     = clk_sdram;
 
-wire uart_midi_mode = (uart_mode != 8'd0);
+wire uart_midi_mode = (uart_mode >= 8'd3);
 
-assign UART_RTS      = 1'b0;
-assign UART_TXD      = uart_midi_mode ? mpu_uart_tx : debug_uart_tx;
-assign UART_DTR      = 1'b0;
+assign UART_RTS      = com3_mode & com3_rts_n;
+assign UART_TXD      = com3_mode ? com3_tx : uart_midi_mode ? mpu_uart_tx : debug_uart_tx;
+assign UART_DTR      = com3_mode & com3_dtr_n;
 
 wire        mt32_reset    = status[84] | reset_sync_r[2] | core_soft_reset_req;
 wire        mt32_disable  = status[85];
