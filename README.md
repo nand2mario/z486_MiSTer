@@ -37,6 +37,12 @@ COM3 is a 16550A at `3E8h`, IRQ 4. It connects to the MiSTer UART when the core'
 
 To use the MiSTer virtual modem, set the UART connection to Modem and choose a baud rate, then configure your DOS communications program for COM3 (`3E8h`, IRQ 4) at that same rate. Modem mode uses the UART, so MidiLink MIDI output is unavailable while it is selected.
 
+## Network (NE2000)
+
+The core has an NE2000-compatible network card at `300h`. Turn it on in the OSD under Hardware, *NE2000 Network*, with IRQ 3 or IRQ 9. DOS programs use it through an NE2000 packet driver, e.g. Crynwr's `NE2000 0x60 3 0x300`, then mTCP (`DHCP`, `PING`, `HTGET`, `TELNET`, `FTP`). The PC appears on your network as a machine of its own with the MAC address `02:4E:45:32:4B:01` and gets its address from your router by DHCP.
+
+The DE10-Nano's network port belongs to the MiSTer's Linux side, so frames pass through a small helper program there, `c65_net` (shared with the C65 core). Install it once: copy `c65_net.sh` and `c65_net` to `/media/fat/Scripts` and run `c65_net.sh` from the Scripts menu; it starts by itself at every boot from then on. The MiSTer must be on a cable, not Wi-Fi. A 1 MB HTTP download from another machine on the network takes about 3 seconds with mTCP's default settings.
+
 ## Shared folders and CPU speed
 
 [MISTERFS](doc/misterfs.md) shares `/media/fat/games/Z486/shared` with DOS using the current ao486 driver. If using EMM386, reserve `CE00-CFFF` before loading the driver.

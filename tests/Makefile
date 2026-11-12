@@ -139,3 +139,12 @@ $(OBJ_DIR)/Vtb_sdram_size: tb_sdram_size.sv ../src/memory/sdram.v | $(OBJ_DIR)
 
 clean:
 	rm -rf $(OBJ_DIR)
+
+.PHONY: test-ne2000
+test-ne2000: $(OBJ_DIR)/Vtb_ne2000
+	./$(OBJ_DIR)/Vtb_ne2000
+
+test: test-ne2000
+
+$(OBJ_DIR)/Vtb_ne2000: tb_ne2000.sv ../src/soc/ne2000.sv ../src/common/dpram.v | $(OBJ_DIR)
+	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/ne2000 		--top-module tb_ne2000 $^ -o ../Vtb_ne2000

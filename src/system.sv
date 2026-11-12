@@ -116,6 +116,9 @@ module system (
     output        com3_rts_n,
     output        com3_dtr_n,
 
+    // NE2000 at 300h: 0 off, 1 IRQ 3, 2 IRQ 9
+    input   [1:0] ne2000_mode,
+
     // SignalTap anchors for the boot-ROM / reset-vector path.
     output [31:0] dbg_sd_avm_address,
     output [31:0] dbg_sd_avm_writedata,
@@ -422,6 +425,7 @@ reg         sb_cs;
 reg         uart1_cs;
 reg         uart2_cs;
 reg         uart3_cs;
+reg         ne2k_cs;
 reg         mpu_cs;
 reg         vga_b_cs;
 reg         vga_c_cs;
@@ -450,6 +454,7 @@ wire  [7:0] rtc_readdata;
 wire  [7:0] uart1_readdata;
 wire  [7:0] uart2_readdata;
 wire  [7:0] uart3_readdata;
+wire  [7:0] ne2k_readdata;
 wire  [7:0] mpu_readdata;
 wire  [7:0] dma_io_readdata;
 wire  [7:0] pic_readdata;
@@ -756,9 +761,9 @@ main_memory #(.ENABLE_SHARED_MAILBOX(ENABLE_SHARED_MAILBOX)) main_memory (
 	.fb_ddram_we          (fb_ddram_we),
 	.fb_ddram_rd          (fb_ddram_rd),
 	.fb_ddram_dout        (ddram_dout),
-	.fb_ddram_dout_ready  (ddram_dout_ready),
+	.fb_ddram_dout_ready  (fb_ddram_ready_a),
 	.fb_ddram_burstcnt    (fb_ddram_burstcnt),
-	.fb_ddram_busy        (ddram_busy)
+	.fb_ddram_busy        (fb_ddram_busy_a)
 );
 
 // CPU → SDRAM port 0: main_memory holds signals stable until accepted
@@ -863,6 +868,7 @@ wire [7:0] iobus_readdata8 =
 	( sb_cs|fm_cs                            ) ? sound_readdata    :
 	( mpu_cs                                 ) ? mpu_readdata      :
 	( uart3_cs                               ) ? uart3_readdata    :
+	( ne2k_cs                                ) ? ne2k_readdata     :
 	( joy_cs                                 ) ? joystick_readdata :
 	( vga_b_cs|vga_c_cs|vga_d_cs             ) ? vga_io_readdata   :
 	( debug_port_cs                          ) ? 8'hE9             :
@@ -949,6 +955,7 @@ always @(posedge clk_sys) begin
 		uart1_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h03F8); // COM1
 		uart2_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h02F8); // COM2
 		uart3_cs      <= ({iobus_address_next[15:3], 3'd0} == 16'h03E8); // COM3
+		ne2k_cs       <= ({iobus_address_next[15:5], 5'd0} == 16'h0300) && (ne2000_mode != 2'd0);
 		mpu_cs        <= ({iobus_address_next[15:1], 1'd0} == 16'h0330); // MPU-401 330/331
 		vga_b_cs      <= ({iobus_address_next[15:4], 4'd0} == 16'h03B0);
 		vga_c_cs      <= ({iobus_address_next[15:4], 4'd0} == 16'h03C0);
@@ -1107,13 +1114,38 @@ assign dbg_sd_avm_accept    = sd_avm_write && !dbg_sd_avm_wait;
 assign ioctl_wait           = 1'b0;
 
 // ddram is time-shared: boot loader reads the RAM image (pre-boot), then the SVGA
-// framebuffer owns it for writes (post-boot). boot_done is the arbiter (mutually exclusive).
-assign ddram_burstcnt       = boot_done ? fb_ddram_burstcnt : 8'd1;
-assign ddram_addr           = boot_done ? fb_ddram_addr     : {4'h3, boot_ddr_byte_addr[27:3]};
-assign ddram_rd             = boot_done ? fb_ddram_rd        : ddram_rd_r;
-assign ddram_din            = boot_done ? fb_ddram_din      : 64'd0;
-assign ddram_be             = boot_done ? fb_ddram_be       : 8'hFF;
-assign ddram_we             = boot_done ? fb_ddram_we       : 1'b0;
+// framebuffer and the NE2000's shared area take turns (post-boot). boot_done
+// separates the two phases (mutually exclusive). The port changes hands only
+// while its owner has no request up and no read outstanding; the waiting side
+// sees busy.
+reg  ddr_nic_own;
+reg  ddr_fb_pend, ddr_nic_pend;
+wire fb_ddr_req  = fb_ddram_rd  | fb_ddram_we;
+wire nic_ddr_req = nic_ddram_rd | nic_ddram_we;
+always @(posedge clk_sys) begin
+	if (reset || !boot_done) begin
+		ddr_nic_own <= 1'b0; ddr_fb_pend <= 1'b0; ddr_nic_pend <= 1'b0;
+	end
+	else begin
+		if (!ddr_nic_own && fb_ddram_rd && !ddram_busy) ddr_fb_pend <= 1'b1;
+		else if (!ddr_nic_own && ddram_dout_ready)      ddr_fb_pend <= 1'b0;
+		if (ddr_nic_own && nic_ddram_rd && !ddram_busy) ddr_nic_pend <= 1'b1;
+		else if (ddr_nic_own && ddram_dout_ready)       ddr_nic_pend <= 1'b0;
+		if (!ddr_nic_own && !fb_ddr_req && !ddr_fb_pend && nic_ddr_req) ddr_nic_own <= 1'b1;
+		if (ddr_nic_own && !nic_ddr_req && !ddr_nic_pend && fb_ddr_req) ddr_nic_own <= 1'b0;
+	end
+end
+wire fb_ddram_busy_a   = ddram_busy | ddr_nic_own;
+wire fb_ddram_ready_a  = ddram_dout_ready & !ddr_nic_own;
+wire nic_ddram_busy    = ddram_busy | !ddr_nic_own | !boot_done;
+wire nic_ddram_ready   = ddram_dout_ready & ddr_nic_own;
+
+assign ddram_burstcnt       = (boot_done && !ddr_nic_own) ? fb_ddram_burstcnt : 8'd1;
+assign ddram_addr           = !boot_done ? {4'h3, boot_ddr_byte_addr[27:3]} : ddr_nic_own ? nic_ddram_addr : fb_ddram_addr;
+assign ddram_rd             = !boot_done ? ddram_rd_r : ddr_nic_own ? nic_ddram_rd : fb_ddram_rd;
+assign ddram_din            = !boot_done ? 64'd0      : ddr_nic_own ? nic_ddram_din : fb_ddram_din;
+assign ddram_be             = !boot_done ? 8'hFF      : ddr_nic_own ? nic_ddram_be : fb_ddram_be;
+assign ddram_we             = !boot_done ? 1'b0       : ddr_nic_own ? nic_ddram_we : fb_ddram_we;
 
 assign dbg_mm_addr          = mm_addr;
 assign dbg_mm_din           = mm_din;
@@ -1929,6 +1961,37 @@ uart16550 #(.CLK_HZ(SYS_FREQ)) com3
     .rts_n        (com3_rts_n),
     .dtr_n        (com3_dtr_n)
 );
+
+// NE2000 at 300h-31Fh, frames through the HPS DDR shared area (see ne2000.sv)
+wire [28:0] nic_ddram_addr;
+wire [63:0] nic_ddram_din;
+wire  [7:0] nic_ddram_be;
+wire        nic_ddram_rd, nic_ddram_we;
+wire        ne2k_irq;
+
+ne2000 ne2k
+(
+    .clk            (clk_sys),
+    .reset          (reset),
+    .enable         (ne2000_mode != 2'd0),
+    .io_address     (iobus_address[4:0]),
+    .io_read        (iobus_read),
+    .io_write       (iobus_write),
+    .io_cs          (ne2k_cs),
+    .io_writedata   (iobus_writedata_byte),
+    .io_readdata    (ne2k_readdata),
+    .irq            (ne2k_irq),
+    .ddr_addr       (nic_ddram_addr),
+    .ddr_rd         (nic_ddram_rd),
+    .ddr_we         (nic_ddram_we),
+    .ddr_din        (nic_ddram_din),
+    .ddr_be         (nic_ddram_be),
+    .ddr_busy       (nic_ddram_busy),
+    .ddr_dout       (ddram_dout),
+    .ddr_dout_ready (nic_ddram_ready)
+);
+assign irq_3 = ne2k_irq && (ne2000_mode == 2'd1);
+assign irq_9 = ne2k_irq && (ne2000_mode == 2'd2);
 
 // Export debug byte for UART bridge to wrap as type 0x07
 wire bios_dbg_write = iobus_write && debug_port_cs;

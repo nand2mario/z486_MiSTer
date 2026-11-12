@@ -602,6 +602,7 @@ system #(
 	.com3_ri_n           (1'b1),
 	.com3_rts_n          (),
 	.com3_dtr_n          (),
+	.ne2000_mode         (2'd0),
 
 	.dbg_sd_avm_address  (dbg_sd_avm_address),
 	.dbg_sd_avm_writedata(dbg_sd_avm_writedata),
