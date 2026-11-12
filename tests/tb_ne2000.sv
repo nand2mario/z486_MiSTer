@@ -118,9 +118,9 @@ initial begin
             last_hb = sb('h1F); last_change = $time / 10; beats++;
         end
         // live: the signature is there and the heartbeat moved lately
-        if (!(sb(0) == 8'hE7 && sb(1) == 8'd2 && sig_ok() && $time / 10 - last_change < 3 * 'h8000)) continue;
+        if (sb(0) == 8'hE7 && sb(1) == 8'd2 && sig_ok() && $time / 10 - last_change < 3 * 'h8000) begin
         wb(10, 8'hA5); wb(11, 8'd2);
-        if (!(sb(7) & 1)) continue;
+        if (sb(7) & 1) begin
         if (sb(4) != sb(9)) begin
             txlen = sb(5) | ((sb(6) & 15) << 8);
             for (int i = 0; i < txlen; i++) txf[i] = sb('h800 + i);
@@ -134,6 +134,8 @@ initial begin
             for (int i = 0; i < n; i++) wb('h1002 + i, (i < n - 4) ? rxq[rxq_head][i] : 8'hCC);
             rxq_head = (rxq_head + 1) % 64; rxq_n--;
             wb(8, sb(2));
+        end
+        end
         end
     end
 end
@@ -215,16 +217,17 @@ endtask
 
 task automatic wait_isr(input [7:0] bits, input integer limit);
     logic [7:0] v;
-    for (int i = 0; i < limit; i++) begin
+    integer i;
+    v = 0;
+    for (i = 0; i < limit && !(v & bits); i++) begin
         inb(5'h07, v);
-        if (v & bits) return;
-        repeat (50) @(posedge clk);
+        if (!(v & bits)) repeat (50) @(posedge clk);
     end
-    $display("FAIL timeout waiting for ISR %h", bits); errors++;
+    if (!(v & bits)) begin $display("FAIL timeout waiting for ISR %h", bits); errors++; end
 endtask
 
 logic [7:0] v, st, nx, ll, lh;
-integer bnry, len, frames;
+integer bnry, len, frames, more;
 
 initial begin
     repeat (5) @(posedge clk);
@@ -294,10 +297,12 @@ initial begin
         logic [7:0] cur;
         wait_isr(8'h01, 4000);
         outb(5'h07, 8'h01);
-        forever begin
+        more = 1;
+        while (more) begin
             outb(5'h00, 8'h62); inb(5'h07, cur); outb(5'h00, 8'h22);
             page = (bnry + 1 >= 8'h80) ? 8'h46 : bnry + 1;
-            if (page == cur) break;
+            if (page == cur) more = 0;
+            else begin
             set_rdma(page << 8, 16'd4, 8'h0A);
             inb(5'h10, st); inb(5'h11, nx); inb(5'h10, ll); inb(5'h11, lh);
             len = {lh, ll};
@@ -314,6 +319,7 @@ initial begin
             bnry = (nx == 8'h46) ? 8'h7F : nx - 1;
             outb(5'h03, bnry[7:0]);
             frames++;
+            end
         end
     end
 
