@@ -29,7 +29,10 @@ set_global_assignment -name VERILOG_FILE src/soc/hps_ext.v
 set_global_assignment -name VERILOG_FILE src/soc/ide.v
 set_global_assignment -name VERILOG_FILE src/soc/pic.v
 set_global_assignment -name SYSTEMVERILOG_FILE src/soc/uart16550.sv
-set_global_assignment -name SYSTEMVERILOG_FILE src/soc/ne2000.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/soc/netbridge/netbridge.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/soc/netbridge/netbridge_ne2000.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/soc/netbridge/netbridge_ddram_arb.sv
+set_global_assignment -name SYSTEMVERILOG_FILE src/soc/netbridge/netbridge_dpram.sv
 set_global_assignment -name VERILOG_FILE src/soc/pit.v
 set_global_assignment -name VERILOG_FILE src/soc/pit_counter.v
 set_global_assignment -name VERILOG_FILE src/soc/ps2.v

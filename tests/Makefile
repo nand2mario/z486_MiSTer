@@ -146,5 +146,5 @@ test-ne2000: $(OBJ_DIR)/Vtb_ne2000
 
 test: test-ne2000
 
-$(OBJ_DIR)/Vtb_ne2000: tb_ne2000.sv ../src/soc/ne2000.sv ../src/common/dpram.v | $(OBJ_DIR)
+$(OBJ_DIR)/Vtb_ne2000: tb_ne2000.sv ../src/soc/netbridge/netbridge.sv ../src/soc/netbridge/netbridge_ne2000.sv ../src/soc/netbridge/netbridge_ddram_arb.sv ../src/soc/netbridge/netbridge_dpram.sv | $(OBJ_DIR)
 	$(VERILATOR) --binary --timing -Wno-fatal --Mdir $(OBJ_DIR)/ne2000 		--top-module tb_ne2000 $^ -o ../Vtb_ne2000
