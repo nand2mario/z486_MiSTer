@@ -41,7 +41,7 @@ To use the MiSTer virtual modem, set the UART connection to Modem and choose a b
 
 The core has an NE2000-compatible network card at `300h`. Turn it on in the OSD under Hardware, *NE2000 Network*, with IRQ 3 or IRQ 9. DOS programs use it through an NE2000 packet driver, e.g. Crynwr's `NE2000 0x60 3 0x300`, then mTCP (`DHCP`, `PING`, `HTGET`, `TELNET`, `FTP`). The PC appears on your network as a machine of its own with the MAC address `02:4E:45:32:4B:01` and gets its address from your router by DHCP.
 
-The DE10-Nano's network port belongs to the MiSTer's Linux side, so frames pass through a small helper program there, `c65_net` (shared with the C65 core). Install it once: copy `c65_net.sh` and `c65_net` to `/media/fat/Scripts` and run `c65_net.sh` from the Scripts menu; it starts by itself at every boot from then on. The MiSTer must be on a cable, not Wi-Fi. A 1 MB HTTP download from another machine on the network takes about 3 seconds with mTCP's default settings.
+The DE10-Nano's network port belongs to the MiSTer's Linux side, so frames pass through a small helper program there, `c65_net` (shared with the C65 core), in [`scripts/mister`](scripts/mister) with its source. Install it once: copy `c65_net.sh` and `c65_net` to `/media/fat/Scripts` and run `c65_net.sh` from the Scripts menu; it starts by itself at every boot from then on. The MiSTer must be on a cable, not Wi-Fi. A 1 MB HTTP download from another machine on the network takes about 3 seconds with mTCP's default settings.
 
 ## Shared folders and CPU speed
 
